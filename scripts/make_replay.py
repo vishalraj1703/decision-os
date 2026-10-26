@@ -67,6 +67,49 @@ M1 = {
 }
 
 
+SA = {
+    "meeting_topic": "Mobile app beta",
+    "decisions": [
+        {"decision": "Launch the beta on Android first", "owner": "UNKNOWN", "deadline": "UNKNOWN",
+         "evidence_quote": "We agreed to launch the beta on Android first.", "confidence": 0.94, "missing_info": ["owner", "deadline"]},
+        {"decision": "Beta launch on Nov 5", "owner": "UNKNOWN", "deadline": "Nov 5",
+         "evidence_quote": "The beta launch is planned for Nov 5.", "confidence": 0.8, "missing_info": ["owner"]},
+    ],
+    "actions": [
+        {"id": "a1", "task": "Approve the testing budget", "owner": "Kavya", "deadline": "Oct 27", "dependencies": [],
+         "evidence_quote": "Kavya will approve the testing budget by Oct 27.", "confidence": 0.93, "missing_info": []},
+        {"id": "a2", "task": "Write the test plan", "owner": "Meera", "deadline": "Oct 29", "dependencies": ["a1"],
+         "evidence_quote": "Meera will write the test plan once Kavya approves the budget, by Oct 29.", "confidence": 0.9,
+         "missing_info": []},
+    ],
+    "risks": [],
+    "contradictions": [],
+}
+
+SB = {
+    "meeting_topic": "Mobile app beta",
+    "decisions": [
+        {"decision": "Launch the beta on iOS first", "owner": "UNKNOWN", "deadline": "UNKNOWN",
+         "evidence_quote": "We decided to launch the beta on iOS first.", "confidence": 0.93, "missing_info": ["owner", "deadline"]},
+    ],
+    "actions": [
+        {"id": "a1", "task": "Finish the login screen", "owner": "Asha", "deadline": "Friday", "dependencies": [],
+         "evidence_quote": "Asha will finish the login screen by Friday.", "confidence": 0.9, "missing_info": []},
+        {"id": "a2", "task": "Test the login screen", "owner": "Priya", "deadline": "after Asha finishes", "dependencies": ["a1"],
+         "evidence_quote": "Priya will test the login screen after Asha finishes.", "confidence": 0.88, "missing_info": []},
+        # Typical mistake: guessing an owner for "someone".
+        {"id": "a3", "task": "Update the app store listing", "owner": "Asha", "deadline": "UNKNOWN", "dependencies": [],
+         "evidence_quote": "Someone needs to update the app store listing.", "confidence": 0.55, "missing_info": ["deadline"]},
+    ],
+    "risks": [
+        {"risk": "Push notification server may not be ready in time", "owner": "UNKNOWN", "deadline": "UNKNOWN",
+         "severity": "medium", "evidence_quote": "Ravi said the push notification server might not be ready in time.",
+         "confidence": 0.8, "missing_info": ["owner"]},
+    ],
+    "contradictions": [],
+}
+
+
 def write(name: str, reply: dict) -> None:
     notes = (ROOT / "fixtures" / f"{name}.txt").read_text(encoding="utf-8")
     REPLAY_DIR.mkdir(parents=True, exist_ok=True)
@@ -79,3 +122,5 @@ def write(name: str, reply: dict) -> None:
 if __name__ == "__main__":
     write("demo_meeting_0", M0)
     write("demo_meeting_1", M1)
+    write("sample_meeting_A", SA)
+    write("sample_meeting_B", SB)

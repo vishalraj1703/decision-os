@@ -49,6 +49,13 @@ export default function DemoControls({ today, simulated, emails }: { today: stri
             catch (e) { setMsg(e instanceof ApiError ? e.message : String(e)); }
             finally { setBusy(false); }
           }}>Reset demo</button>
+          <button className="btn btn-ghost" disabled={busy} onClick={async () => {
+            if (!window.confirm("Clear everything? All meetings, tasks and notifications are deleted.")) return;
+            setBusy(true); setMsg(null);
+            try { await api("admin/reset", "POST", {}); setMsg("Cleared. Add a meeting with New meeting."); }
+            catch (e) { setMsg(e instanceof ApiError ? e.message : String(e)); }
+            finally { setBusy(false); }
+          }}>Clear all</button>
         </div>
         {msg && <div className="alert alert-info" role="status"><Icon name="info" size={15} />{msg}</div>}
       </div>

@@ -1,0 +1,5 @@
+Mobile app planning.
+We agreed to launch the beta on Android first.
+Kavya will approve the testing budget by Oct 27.
+Meera will write the test plan once Kavya approves the budget, by Oct 29.
+The beta launch is planned for Nov 5.

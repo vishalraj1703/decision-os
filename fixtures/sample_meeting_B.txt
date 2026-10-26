@@ -1,0 +1,6 @@
+Mobile app sync.
+We decided to launch the beta on iOS first.
+Asha will finish the login screen by Friday.
+Priya will test the login screen after Asha finishes.
+Someone needs to update the app store listing.
+Ravi said the push notification server might not be ready in time.

@@ -26,7 +26,11 @@ REPLAY_DIR = ROOT / "fixtures" / "replay"
 
 
 def notes_key(notes: str) -> str:
-    return hashlib.sha256(notes.strip().replace("\r\n", "\n").encode()).hexdigest()[:12]
+    """Whitespace-insensitive key, so pasted notes match even if line breaks or spaces differ."""
+    return hashlib.sha256(" ".join(notes.split()).encode()).hexdigest()[:12]
+
+
+_STOP = {"the", "and", "for", "with", "our", "use", "will", "this", "that", "from", "first", "deploy", "launch"}
 
 
 def _notes_from(messages: list[dict]) -> str:
@@ -67,9 +71,13 @@ class ReplayAI:
         if system == CONFLICT_SYSTEM:
             payload = json.loads(messages[1]["content"])
             a, b = payload["earlier_decision"]["decision"], payload["new_decision"]["decision"]
-            ta, tb = set(re.findall(r"[a-z]{3,}", a.lower())), set(re.findall(r"[a-z]{3,}", b.lower()))
-            shared = ta & tb
-            contradicts = len(shared) >= 1 and ta != tb
+            words = lambda s: set(re.findall(r"[a-z]{2,}", s.lower()))  # noqa: E731
+            ta, tb = words(a), words(b)
+            # Same action on the same subject, but a different choice ("on Azure" vs "on AWS").
+            same_subject = bool((ta & tb) - {"on", "to", "in", "the", "we"})
+            different = bool((ta ^ tb) - _STOP - {"on", "to", "in"})
+            contradicts = same_subject and different and len(ta ^ tb) <= 4
+            shared = (ta & tb) - {"on", "to", "in", "the", "we"}
             reply = {"contradicts": contradicts, "topic": " ".join(sorted(shared))[:40] or "decision",
                      "explanation": "Replay heuristic: same subject, different choice." if contradicts else "Replay heuristic: no conflict."}
             return ChatResult(json.dumps(reply), None, self.model, 0, "stop", None, None)
