@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import hmac
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
@@ -36,6 +37,10 @@ class StatusIn(In):
     reason: str | None = Field(default=None, max_length=200)
 
 
+class ClockIn(In):
+    date: dt.date | None = None
+
+
 class ExtractIn(In):
     notes: str = Field(max_length=20000)
     meeting_date: dt.date
@@ -47,7 +52,23 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
     db = db or DB(s.db_path)
     ai = ai or build_ai(s)
     svc = Service(db=db, ai=ai, s=s)
-    app = FastAPI(title="Decision OS API", version="1.0")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        sched = None
+        if s.scheduler_enabled:
+            from apscheduler.schedulers.background import BackgroundScheduler
+
+            sched = BackgroundScheduler(timezone=s.timezone)
+            sched.add_job(svc.run_check, "interval", minutes=s.scheduler_minutes, id="deadline-check",
+                          next_run_time=dt.datetime.now(dt.timezone.utc), max_instances=1, coalesce=True)
+            sched.start()
+            log.info("deadline scheduler every %d min", s.scheduler_minutes)
+        yield
+        if sched:
+            sched.shutdown(wait=False)
+
+    app = FastAPI(title="Decision OS API", version="1.0", lifespan=lifespan)
     app.state.svc = svc
 
     def user(x_internal_token: str = Header(default=""), x_user_email: str = Header(default="")) -> Person:
@@ -119,6 +140,14 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
         with db.tx(bump=True) as c:
             c.execute("DELETE FROM meta WHERE key<>'version'")
         return {"ok": True}
+
+    @app.post("/admin/run-check")
+    def run_check(me: Person = Depends(manager)):
+        return svc.run_check()
+
+    @app.post("/admin/clock")
+    def clock(body: ClockIn, me: Person = Depends(manager)):
+        return svc.set_clock(me, body.date)
 
     @app.get("/demo-notes")
     def demo_notes(me: Person = Depends(user)):

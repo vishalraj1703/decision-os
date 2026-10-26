@@ -94,6 +94,12 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
 .node-orange { border-color: var(--orange); background: #24190e; }
 .node-red { border-color: var(--red); background: #2a1213; animation: pulse 1.6s ease-in-out infinite; }
 .node-green { border-color: var(--green); background: #10261c; }
+/* Keep status colors on hover (the generic button hover would override them). */
+button.node:hover:not(:disabled) { filter: brightness(1.15); }
+button.node-grey:hover:not(:disabled) { border-color: var(--grey); background: var(--panel); }
+button.node-orange:hover:not(:disabled) { border-color: var(--orange); background: #24190e; }
+button.node-red:hover:not(:disabled) { border-color: var(--red); background: #2a1213; }
+button.node-green:hover:not(:disabled) { border-color: var(--green); background: #10261c; }
 .node-more { border-style: dashed; border-color: var(--faint); text-align: center; color: var(--muted); }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229, 83, 75, 0.55); } 50% { box-shadow: 0 0 0 9px rgba(229, 83, 75, 0); } }
 @media (prefers-reduced-motion: reduce) { .node-red { animation: none; } }

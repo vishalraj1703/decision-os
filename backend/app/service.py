@@ -294,6 +294,46 @@ class Service:
     def on_dependency_complete(self, upstream: dict, downstream: dict) -> None:
         """Hook for email trigger 3 (Block 7)."""
 
+    # Deadline cascade (spec 5.5), run by the scheduler and by the demo button
+    def run_check(self) -> dict:
+        on, newly_overdue, newly_risk = cascade.recompute(self.db, self.s.timezone)
+        actions = [a for a in self.db.items("WHERE kind='action'") if a["review_state"] != "discarded"]
+        by_id = {a["id"]: a for a in actions}
+        for o in newly_overdue:
+            down = [a for a in actions if o["id"] in a["depends_on"] and a["status"] != "done"]
+            names = ", ".join(f"{d['owner'] or 'UNKNOWN'}'s {d['text']}" for d in down)
+            text = f"{o['owner'] or 'Unassigned'}'s '{o['text']}' is overdue (due {o['deadline_date']})."
+            if names:
+                text += f" This is blocking {names}."
+            self.db.notify("managers", "overdue", text, link=f"/manager#row-{o['id']}", dedupe_key=f"overdue:{o['id']}:{o['deadline_date']}")
+            if o["owner_user_id"]:
+                self.db.notify("user", "overdue", f"Your task '{o['text']}' is overdue. Mark it done or flag it blocked.",
+                               link=f"/me#{o['id']}", user_id=o["owner_user_id"], dedupe_key=f"overdue-me:{o['id']}:{o['deadline_date']}")
+        for r in newly_risk:
+            ups = [by_id[u] for u in r["depends_on"] if u in by_id]
+            late = next((u for u in ups if u["overdue"] or u["status"] == "blocked"), ups[0] if ups else None)
+            if r["owner_user_id"] and late:
+                self.db.notify("user", "at_risk", f"{late['owner'] or 'Someone'} has not finished '{late['text']}'. Your task '{r['text']}' is at risk.",
+                               link=f"/me#{r['id']}", user_id=r["owner_user_id"], dedupe_key=f"risk:{r['id']}:{late['id']}")
+        emails = self.send_deadline_emails(on, actions)
+        return {"today": on.isoformat(), "newly_overdue": [o["text"] for o in newly_overdue],
+                "newly_at_risk": [r["text"] for r in newly_risk], "emails": emails}
+
+    def send_deadline_emails(self, on: dt.date, actions: list[dict]) -> list[str]:
+        """Email triggers 1 and 2 (Block 7)."""
+        return []
+
+    def set_clock(self, me: Person, date: dt.date | None) -> dict:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Managers only.", 403)
+        if date is None:
+            with self.db.tx(bump=True) as c:
+                c.execute("DELETE FROM meta WHERE key='simulated_date'")
+        else:
+            self.db.set_meta("simulated_date", date.isoformat())
+            self.db.bump()
+        return self.run_check()
+
     def read_notifications(self, me: Person) -> None:
         self.db.mark_read(me.id, me.role == "manager")
 

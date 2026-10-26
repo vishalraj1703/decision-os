@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Item, ManagerState, useLiveState } from "@/lib/api";
 import Conflicts from "./Conflicts";
+import DemoControls from "./DemoControls";
 import Flowchart from "./Flowchart";
 import { ActionTable, Callout, ExtractBox, NeedsReview, StatsBar, TeamStrip } from "./Panels";
 import { Bell, EvidenceDrawer, TopBar } from "./Shell";
@@ -41,6 +42,7 @@ export default function ManagerDashboard() {
               <Flowchart graph={s.graph} onOpen={openEvidence} />
             </section>
             <TeamStrip teams={s.teams} />
+            <DemoControls today={s.today} simulated={s.simulated} emails={s.emails} />
           </div>
           <div className="stack">
             <ExtractBox model={s.ai.model} live={s.ai.mode === "live"} demos={demos} />
