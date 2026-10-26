@@ -41,6 +41,14 @@ export default function DemoControls({ today, simulated, emails }: { today: stri
           <input className="input" type="date" aria-label="Simulated date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 150 }} />
           <button className="btn btn-primary" onClick={() => run("admin/clock", { date })} disabled={busy || !date}>Simulate date</button>
           {simulated && <button className="btn btn-ghost" onClick={() => run("admin/clock", { date: null })} disabled={busy}>Use real date</button>}
+          <div className="spacer" />
+          <button className="btn btn-ghost" disabled={busy} onClick={async () => {
+            if (!window.confirm("Reset the demo? This deletes all meetings and reloads the two demo meetings.")) return;
+            setBusy(true); setMsg(null);
+            try { await api("admin/seed-demo", "POST", {}); setMsg("Demo reset: last week's and this week's meetings reloaded."); }
+            catch (e) { setMsg(e instanceof ApiError ? e.message : String(e)); }
+            finally { setBusy(false); }
+          }}>Reset demo</button>
         </div>
         {msg && <div className="alert alert-info" role="status"><Icon name="info" size={15} />{msg}</div>}
       </div>

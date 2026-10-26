@@ -141,6 +141,20 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
             c.execute("DELETE FROM meta WHERE key<>'version'")
         return {"ok": True}
 
+    @app.post("/admin/seed-demo")
+    def seed_demo(me: Person = Depends(manager)):
+        """Wipe everything and load the two demo meetings (last week, then this week)."""
+        from .config import ROOT
+
+        db.reset()
+        with db.tx(bump=True) as c:
+            c.execute("DELETE FROM meta WHERE key<>'version'")
+        out = []
+        for f, d in (("demo_meeting_0.txt", "2026-10-19"), ("demo_meeting_1.txt", "2026-10-26")):
+            notes = (ROOT / "fixtures" / f).read_text(encoding="utf-8").strip()
+            out.append(svc.ingest(notes, dt.date.fromisoformat(d), None, me))
+        return {"ok": True, "meetings": out}
+
     @app.post("/admin/run-check")
     def run_check(me: Person = Depends(manager)):
         return svc.run_check()
