@@ -50,8 +50,11 @@ def sentence_around(notes: str, start: int, end: int) -> tuple[int, int]:
     """Expand a span to the full sentence containing it (for display)."""
     left = max(notes.rfind(".", 0, start), notes.rfind("\n", 0, start), notes.rfind("!", 0, start), notes.rfind("?", 0, start))
     s = left + 1 if left >= 0 else 0
-    rights = [p for p in (notes.find(".", end), notes.find("\n", end), notes.find("!", end), notes.find("?", end)) if p >= 0]
-    e = min(rights) + 1 if rights else len(notes)
+    if end > 0 and notes[end - 1] in ".!?":
+        e = end  # the quote already ends the sentence
+    else:
+        rights = [p for p in (notes.find(".", end), notes.find("\n", end), notes.find("!", end), notes.find("?", end)) if p >= 0]
+        e = min(rights) + 1 if rights else len(notes)
     while s < e and notes[s].isspace():
         s += 1
     return s, min(e, len(notes))

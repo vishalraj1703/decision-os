@@ -159,15 +159,15 @@ def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[C
         deps = list(act.dependencies) if act else []
         if dl.status == "after_dependency" and not deps:
             dl = dates.Deadline(None, "unknown", "Depends on something the notes do not identify as a task.")
+        # A gap only counts where the field matters: tasks need an owner and a deadline,
+        # risks need an owner; decisions are recorded as stated.
         missing = []
-        if owner is None:
+        if owner is None and kind in ("action", "risk"):
             missing.append("owner")
-        if dl.status == "unknown":
+        if kind == "action" and dl.status == "unknown":
             missing.append("deadline")
-        elif dl.status == "needs_confirmation":
+        if kind == "action" and dl.status == "needs_confirmation":
             missing.append("deadline_confirmation")
-        if kind == "risk" and getattr(it, "severity", UNKNOWN) == UNKNOWN:
-            pass  # severity is informational; not a blocker for review
         if kind == "action":
             ref = act.id
         else:

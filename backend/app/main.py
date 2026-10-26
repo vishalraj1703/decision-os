@@ -26,6 +26,11 @@ class In(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ResolveIn(In):
+    action: str = Field(max_length=40)
+    value: str | None = Field(default=None, max_length=120)
+
+
 class ExtractIn(In):
     notes: str = Field(max_length=20000)
     meeting_date: dt.date
@@ -80,6 +85,32 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
         if since is not None and since == v:
             return {"changed": False, "version": v}
         return {"changed": True, **svc.state(me)}
+
+    @app.post("/items/{item_id}/resolve")
+    def resolve(item_id: str, body: ResolveIn, me: Person = Depends(user)):
+        return svc.resolve_item(me, item_id, body.action, body.value)
+
+    def manager(me: Person = Depends(user)) -> Person:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Managers only.", 403)
+        return me
+
+    @app.post("/admin/reset")
+    def reset(me: Person = Depends(manager)):
+        db.reset()
+        with db.tx(bump=True) as c:
+            c.execute("DELETE FROM meta WHERE key<>'version'")
+        return {"ok": True}
+
+    @app.get("/demo-notes")
+    def demo_notes(me: Person = Depends(user)):
+        from .config import ROOT
+
+        fx = ROOT / "fixtures"
+        return [
+            {"label": "last week's meeting", "date": "2026-10-19", "notes": (fx / "demo_meeting_0.txt").read_text(encoding="utf-8").strip()},
+            {"label": "this week's meeting", "date": "2026-10-26", "notes": (fx / "demo_meeting_1.txt").read_text(encoding="utf-8").strip()},
+        ]
 
     @app.get("/meetings/{meeting_id}/source")
     def source(meeting_id: str, me: Person = Depends(user)):

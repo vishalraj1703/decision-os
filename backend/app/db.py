@@ -94,6 +94,10 @@ class DB:
         with self.tx() as c:
             return int(c.execute("SELECT value FROM meta WHERE key='version'").fetchone()[0])
 
+    def bump(self) -> None:
+        with self.tx(bump=True):
+            pass
+
     def get_meta(self, key: str) -> str | None:
         with self.tx() as c:
             r = c.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()

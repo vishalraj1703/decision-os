@@ -110,3 +110,13 @@ def test_requires_internal_token_and_manager(client):
 def test_state_polling_reports_no_change(client):
     v = client.get("/state", headers=MANAGER).json()["version"]
     assert client.get(f"/state?since={v}", headers=MANAGER).json() == {"changed": False, "version": v}
+
+
+def test_highlight_is_exactly_one_sentence(client):
+    out = extract(client)
+    st = client.get("/state", headers=MANAGER).json()
+    src = client.get(f"/meetings/{out['meeting_id']}/source", headers=MANAGER).json()["notes"]
+    raj = next(a for a in st["actions"] if a["owner"] == "Raj")
+    assert src[raj["ev_start"]:raj["ev_end"]] == "Monday project meeting: Raj said the payment API will be ready by Friday."
+    priya = next(a for a in st["actions"] if a["owner"] == "Priya")
+    assert src[priya["ev_start"]:priya["ev_end"]] == "Priya will test it once Raj finishes."
