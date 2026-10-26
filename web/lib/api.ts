@@ -11,7 +11,7 @@ export interface Item {
   deadline_raw: string | null; deadline_date: string | null; deadline_status: string; deadline_note: string | null; deadline_text: string;
   severity: string | null; evidence_quote: string; ev_start: number; ev_end: number; confidence: number;
   missing_info: string[]; checks: string[]; status: Status; blocked_reason: string | null;
-  review_state: "ok" | "needs_review" | "follow_up" | "discarded" | "verified";
+  review_state: "ok" | "needs_review" | "follow_up" | "discarded" | "superseded";
   overdue: boolean; at_risk: boolean; depends_on: string[]; color: Color;
   meeting: { id: string; topic: string; date: string };
   blocked_by?: Brief[]; blocking?: Brief[];

@@ -91,6 +91,10 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
             return {"changed": False, "version": v}
         return {"changed": True, **svc.state(me)}
 
+    @app.post("/contradictions/{cid}/resolve")
+    def resolve_conflict(cid: str, body: ResolveIn, me: Person = Depends(user)):
+        return svc.resolve_conflict(me, cid, body.action)
+
     @app.patch("/items/{item_id}/status")
     def set_status(item_id: str, body: StatusIn, me: Person = Depends(user)):
         return svc.update_status(me, item_id, body.status, body.reason)

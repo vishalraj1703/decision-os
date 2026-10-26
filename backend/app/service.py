@@ -9,7 +9,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 
-from . import cascade, dates, extract
+from . import cascade, conflicts, dates, extract
 from .config import Settings
 from .db import DB, new_id
 from .prompts import callout_messages
@@ -112,8 +112,34 @@ class Service:
             r["embedding"] = v
 
     def after_ingest(self, meeting_id: str) -> None:
-        """Hooks that run after a meeting is stored (conflicts, cascade)."""
+        """Hooks that run after a meeting is stored: cross-meeting conflicts, then the cascade."""
+        try:
+            conflicts.detect(self.db, self.ai, meeting_id)
+        except Exception:  # noqa: BLE001 - conflict detection must never lose an extraction
+            log.exception("conflict detection failed")
+        for c in self.db.contradictions():
+            if c["meeting_id"] == meeting_id and c["source"] == "in_meeting":
+                self.db.notify("managers", "contradiction", f"Decision conflict on {c['topic']}: '{c['current']}' now, '{c['previous']}' before.",
+                               link=f"/manager#conflict-{c['id']}", dedupe_key=f"conflict-in:{c['id']}")
         cascade.recompute(self.db, self.s.timezone)
+
+    def resolve_conflict(self, me: Person, cid: str, action: str) -> dict:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Only managers resolve conflicts.", 403)
+        c = next((x for x in self.db.contradictions() if x["id"] == cid), None)
+        if c is None:
+            raise AppError("NOT_FOUND", "Conflict not found.", 404)
+        status = {"confirm_current": "confirmed_current", "revert": "reverted", "follow_up": "follow_up"}.get(action)
+        if status is None:
+            raise AppError("INVALID", "Choose confirm current, revert or follow-up.", 422)
+        self.db.resolve_contradiction(cid, status, me.name)
+        loser = c["previous_item_id"] if action == "confirm_current" else c["current_item_id"] if action == "revert" else None
+        if loser:
+            it = self.db.item(loser)
+            if it:
+                self.db.update_item(loser, review_state="superseded",
+                                    checks=it["checks"] + [f"Superseded: {me.name} resolved the {c['topic']} conflict."])
+        return next(x for x in self.db.contradictions() if x["id"] == cid)
 
     # Dashboard state
     def state(self, me: Person) -> dict:

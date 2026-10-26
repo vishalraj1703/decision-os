@@ -140,6 +140,16 @@ class DB:
             ).fetchall()
         return [(dict(r), json.loads(r["embedding"])) for r in rows]
 
+    def item_embeddings_for_meeting(self, meeting_id: str, kind: str) -> list[tuple[dict, list[float]]]:
+        with self.tx() as c:
+            rows = c.execute("SELECT * FROM items WHERE meeting_id=? AND kind=? AND embedding IS NOT NULL", (meeting_id, kind)).fetchall()
+        return [(dict(r), json.loads(r["embedding"])) for r in rows]
+
+    def drop_in_meeting_duplicate(self, meeting_id: str, current_evidence: str) -> None:
+        with self.tx(bump=True) as c:
+            c.execute("DELETE FROM contradictions WHERE meeting_id=? AND source='in_meeting' AND current_evidence=?",
+                      (meeting_id, current_evidence))
+
     def meetings(self) -> list[dict]:
         with self.tx() as c:
             rows = c.execute("SELECT id, topic, title, meeting_date, created_at, model, attempts, latency_ms, rejected_json "

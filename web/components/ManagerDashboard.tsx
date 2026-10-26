@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, Item, ManagerState, useLiveState } from "@/lib/api";
+import Conflicts from "./Conflicts";
 import Flowchart from "./Flowchart";
 import { ActionTable, Callout, ExtractBox, NeedsReview, StatsBar, TeamStrip } from "./Panels";
 import { Bell, EvidenceDrawer, TopBar } from "./Shell";
@@ -43,6 +44,7 @@ export default function ManagerDashboard() {
           </div>
           <div className="stack">
             <ExtractBox model={s.ai.model} live={s.ai.mode === "live"} demos={demos} />
+            <Conflicts items={s.conflicts} meetings={s.meetings} live={s.ai.mode === "live"} />
             <section className="card" aria-labelledby="nr">
               <h2 id="nr">Needs Review <span className="chip chip-review">{s.needs_review.length}</span></h2>
               <NeedsReview items={s.needs_review} people={people} onEvidence={openEvidence} />
@@ -58,7 +60,7 @@ export default function ManagerDashboard() {
             <h2>Decisions</h2>
             {s.decisions.length ? (
               <table><tbody>{s.decisions.map((d) => (
-                <tr key={d.id}><td>{d.text}<div className="faint" style={{ fontSize: 11.5 }}>{d.meeting.topic} · {d.meeting.date}</div></td>
+                <tr key={d.id}><td style={d.review_state === "superseded" ? { textDecoration: "line-through", color: "var(--faint)" } : undefined}>{d.text}{d.review_state === "superseded" && <> <span className="chip chip-grey">superseded</span></>}<div className="faint" style={{ fontSize: 11.5 }}>{d.meeting.topic} · {d.meeting.date}</div></td>
                   <td><button className="btn-link" onClick={() => openEvidence(d)}>view source</button></td></tr>
               ))}</tbody></table>
             ) : <p className="muted">None yet.</p>}
