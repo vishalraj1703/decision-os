@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api, ApiError, Email, fmtDate } from "@/lib/api";
+import Icon from "./Icon";
 
 type CheckResult = { today: string; newly_overdue: string[]; newly_at_risk: string[]; emails: string[] };
 
@@ -15,9 +16,9 @@ export default function DemoControls({ today, simulated, emails }: { today: stri
     try {
       const r = await api<CheckResult>(path, "POST", body);
       const parts = [`Checked as of ${fmtDate(r.today)}.`];
-      parts.push(r.newly_overdue.length ? `Newly overdue: ${r.newly_overdue.join(", ")}.` : "No new overdue tasks.");
+      parts.push(r.newly_overdue.length ? `Now overdue: ${r.newly_overdue.join(", ")}.` : "No new overdue tasks.");
       if (r.newly_at_risk.length) parts.push(`Now at risk: ${r.newly_at_risk.join(", ")}.`);
-      if (r.emails.length) parts.push(`Emails: ${r.emails.length}.`);
+      if (r.emails.length) parts.push(`${r.emails.length} email${r.emails.length === 1 ? "" : "s"} queued.`);
       setMsg(parts.join(" "));
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : String(e));
@@ -27,31 +28,37 @@ export default function DemoControls({ today, simulated, emails }: { today: stri
   };
 
   return (
-    <section className="card" aria-labelledby="dc-h">
-      <h2 id="dc-h">Deadline check</h2>
-      <p className="faint" style={{ fontSize: 12.5 }}>The scheduler checks deadlines every hour. For the demo, run it now, or simulate a later date to show the cascade.</p>
-      <div className="row">
-        <button onClick={() => run("admin/run-check", {})} disabled={busy}>Run check now</button>
-        <input type="date" aria-label="Simulated date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 160 }} />
-        <button className="btn-gold" onClick={() => run("admin/clock", { date })} disabled={busy || !date}>Simulate this date</button>
-        {simulated && <button onClick={() => run("admin/clock", { date: null })} disabled={busy}>Back to real time</button>}
+    <div className="card" id="deadlines">
+      <div className="card-head">
+        <h2>Deadline check</h2>
+        <div className="spacer" />
+        <span className="tiny muted">Runs automatically every hour</span>
       </div>
-      {msg && <div className="alert alert-ok" style={{ marginTop: 10 }} role="status">{msg}</div>}
+      <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="row">
+          <button className="btn" onClick={() => run("admin/run-check", {})} disabled={busy}><Icon name="clock" size={14} />Run now</button>
+          <span className="muted small" style={{ margin: "0 4px" }}>or check as of</span>
+          <input className="input" type="date" aria-label="Simulated date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 150 }} />
+          <button className="btn btn-primary" onClick={() => run("admin/clock", { date })} disabled={busy || !date}>Simulate date</button>
+          {simulated && <button className="btn btn-ghost" onClick={() => run("admin/clock", { date: null })} disabled={busy}>Use real date</button>}
+        </div>
+        {msg && <div className="alert alert-info" role="status"><Icon name="info" size={15} />{msg}</div>}
+      </div>
       {emails.length > 0 && (
-        <>
-          <h3 style={{ marginTop: 14 }}>Recent emails</h3>
-          <table>
-            <tbody>
-              {emails.slice(0, 6).map((e) => (
-                <tr key={e.id}>
-                  <td style={{ width: 90 }}><span className={`chip ${e.status === "sent" ? "chip-green" : e.status === "failed" ? "chip-red" : "chip-grey"}`}>{e.status}</span></td>
-                  <td>{e.subject}<div className="faint" style={{ fontSize: 11.5 }}>to {e.to_email}{e.delivered_to && e.delivered_to !== e.to_email ? ` (delivered to ${e.delivered_to})` : ""}{e.error ? ` · ${e.error}` : ""}</div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+        <table className="table">
+          <thead><tr><th>Email</th><th>Recipient</th><th>Status</th></tr></thead>
+          <tbody>
+            {emails.slice(0, 6).map((e) => (
+              <tr key={e.id}>
+                <td><div className="row" style={{ gap: 6 }}><Icon name="mail" size={14} className="muted" />{e.subject}</div></td>
+                <td className="small">{e.to_email}{e.delivered_to && e.delivered_to !== e.to_email && <div className="tiny muted">delivered to {e.delivered_to}</div>}</td>
+                <td><span className={`status ${e.status === "sent" ? "s-green" : e.status === "failed" ? "s-red" : "s-grey"}`}><i />{e.status}</span>
+                  {e.error && <div className="tiny muted">{e.error}</div>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
-    </section>
+    </div>
   );
 }

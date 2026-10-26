@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api, Item, ManagerState, useLiveState } from "@/lib/api";
+import { api, fmtDate, Item, ManagerState, useLiveState } from "@/lib/api";
 import Conflicts from "./Conflicts";
 import DemoControls from "./DemoControls";
-import Flowchart from "./Flowchart";
-import { ActionTable, Callout, ExtractBox, NeedsReview, StatsBar, TeamStrip } from "./Panels";
-import { Bell, EvidenceDrawer, TopBar } from "./Shell";
+import Flowchart, { Legend } from "./Flowchart";
+import Icon from "./Icon";
+import { ActionTable, Callout, Metrics, NeedsReview, NewMeeting, TeamStatus } from "./Panels";
+import { Bell, EnginePill, NavLink, SimPill, Sidebar, SourceSheet, UserMenu } from "./Shell";
 
 type Person = { name: string; email: string; team: string; role: string };
 type Demo = { label: string; date: string; notes: string };
@@ -15,85 +16,138 @@ export default function ManagerDashboard() {
   const { state, error } = useLiveState<ManagerState>();
   const [people, setPeople] = useState<Person[]>([]);
   const [demos, setDemos] = useState<Demo[]>([]);
-  const [evidence, setEvidence] = useState<Item | null>(null);
+  const [source, setSource] = useState<Item | null>(null);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     fetch("/api/people").then((r) => r.json()).then(setPeople).catch(() => setPeople([]));
     api<Demo[]>("demo-notes").then(setDemos).catch(() => setDemos([]));
   }, []);
-  const openEvidence = useCallback((i: Item) => setEvidence(i), []);
+  const openSource = useCallback((i: Item) => setSource(i), []);
 
   if (!state) {
-    return <div className="page">{error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading dashboard…</p>}</div>;
+    return <div className="content">{error ? <div className="alert alert-error">{error}</div> : <div className="row muted"><span className="spinner dark" />Loading…</div>}</div>;
   }
   const s = state;
+  const openConflicts = s.conflicts.filter((c) => c.status === "open").length;
+  const live = s.ai.mode === "live";
+
   return (
-    <>
-      <TopBar ai={s.ai} me={s.me} today={s.today} simulated={s.simulated}
-              bell={<Bell items={s.notifications} unread={s.unread} onRead={() => api("notifications/read", "POST", {})} />} />
-      <main className="page stack">
-        {error && <div className="alert alert-error">{error}</div>}
-        <StatsBar stats={s.stats} />
-        <div className="grid-main">
-          <div className="stack">
-            <Callout c={s.callout} />
-            <section className="card">
-              <h2>Cross-team dependency flowchart</h2>
-              <Flowchart graph={s.graph} onOpen={openEvidence} />
-            </section>
-            <TeamStrip teams={s.teams} />
-            <DemoControls today={s.today} simulated={s.simulated} emails={s.emails} />
+    <div className="shell">
+      <Sidebar ai={s.ai}>
+        <nav className="nav" aria-label="Sections">
+          <div className="nav-title">Workspace</div>
+          <NavLink href="#top" icon="layout" label="Overview" />
+          <NavLink href="#review" icon="inbox" label="Needs review" count={s.needs_review.length} />
+          <NavLink href="#conflicts" icon="split" label="Conflicts" count={openConflicts} alert />
+          <NavLink href="#actions" icon="list" label="Action items" count={s.actions.length} />
+          <NavLink href="#decisions" icon="checkCircle" label="Decisions & risks" />
+          <NavLink href="#meetings" icon="file" label="Meetings" count={s.meetings.length} />
+          <NavLink href="#deadlines" icon="clock" label="Deadline check" />
+        </nav>
+      </Sidebar>
+
+      <div className="main" id="top">
+        <header className="topbar">
+          <div className="title">
+            <h1 style={{ fontSize: 16 }}>Overview</h1>
+            <span>{s.meetings.length ? `${s.meetings.length} meeting${s.meetings.length === 1 ? "" : "s"} · last on ${fmtDate(s.meetings[s.meetings.length - 1].meeting_date)}` : "No meetings yet"}</span>
           </div>
-          <div className="stack">
-            <ExtractBox model={s.ai.model} live={s.ai.mode === "live"} demos={demos} />
-            <Conflicts items={s.conflicts} meetings={s.meetings} live={s.ai.mode === "live"} />
-            <section className="card" aria-labelledby="nr">
-              <h2 id="nr">Needs Review <span className="chip chip-review">{s.needs_review.length}</span></h2>
-              <NeedsReview items={s.needs_review} people={people} onEvidence={openEvidence} />
-            </section>
+          <div className="spacer" />
+          <SimPill today={s.today} simulated={s.simulated} />
+          <EnginePill ai={s.ai} />
+          <button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" size={15} />New meeting</button>
+          <Bell items={s.notifications} unread={s.unread} />
+          <UserMenu me={s.me} />
+        </header>
+
+        <main className="content">
+          {error && <div className="alert alert-error"><Icon name="alert" size={15} />{error}</div>}
+          <Metrics stats={s.stats} actions={s.actions} />
+          <Callout c={s.callout} />
+
+          <div className="grid-2">
+            <div className="col">
+              <div className="card">
+                <div className="card-head">
+                  <h2>Dependencies</h2>
+                  <span className="sub">who is waiting on whom</span>
+                  <div className="spacer" />
+                  <Legend />
+                </div>
+                <Flowchart graph={s.graph} onOpen={openSource} />
+              </div>
+              <TeamStatus teams={s.teams} />
+            </div>
+            <div className="col">
+              <NeedsReview items={s.needs_review} people={people} onSource={openSource} />
+              <Conflicts items={s.conflicts} meetings={s.meetings} live={live} />
+            </div>
           </div>
-        </div>
-        <section className="card">
-          <h2>Action items</h2>
-          <ActionTable actions={s.actions} onEvidence={openEvidence} />
-        </section>
-        <div className="grid-main">
-          <section className="card">
-            <h2>Decisions</h2>
-            {s.decisions.length ? (
-              <table><tbody>{s.decisions.map((d) => (
-                <tr key={d.id}><td style={d.review_state === "superseded" ? { textDecoration: "line-through", color: "var(--faint)" } : undefined}>{d.text}{d.review_state === "superseded" && <> <span className="chip chip-grey">superseded</span></>}<div className="faint" style={{ fontSize: 11.5 }}>{d.meeting.topic} · {d.meeting.date}</div></td>
-                  <td><button className="btn-link" onClick={() => openEvidence(d)}>view source</button></td></tr>
-              ))}</tbody></table>
-            ) : <p className="muted">None yet.</p>}
-          </section>
-          <section className="card">
-            <h2>Risks</h2>
-            {s.risks.length ? (
-              <table><tbody>{s.risks.map((r) => (
-                <tr key={r.id}><td>{r.text}<div className="faint" style={{ fontSize: 11.5 }}>Owner: {r.owner ?? "UNKNOWN"} · severity {r.severity?.toLowerCase() ?? "unknown"}</div></td>
-                  <td><button className="btn-link" onClick={() => openEvidence(r)}>view source</button></td></tr>
-              ))}</tbody></table>
-            ) : <p className="muted">None yet.</p>}
-          </section>
-        </div>
-        {s.meetings.length > 0 && (
-          <section className="card">
-            <h2>Ingested meetings</h2>
-            <table>
-              <thead><tr><th>Meeting</th><th>Date</th><th>Model</th><th>Calls</th><th>Rejected claims</th></tr></thead>
-              <tbody>{s.meetings.map((m) => (
-                <tr key={m.id}><td>{m.topic}</td><td>{m.meeting_date}</td><td className="mono">{m.model}</td><td>{m.attempts}</td>
-                  <td>{m.rejected.length ? m.rejected.map((r) => `${r.text}: ${r.reason}`).join("; ") : <span className="faint">none</span>}</td></tr>
-              ))}</tbody>
-            </table>
-          </section>
-        )}
-      </main>
-      {evidence && (
-        <EvidenceDrawer meetingId={evidence.meeting_id} start={evidence.ev_start} end={evidence.ev_end}
-                        title={`${evidence.text} · owner ${evidence.owner ?? "UNKNOWN"}`} onClose={() => setEvidence(null)} />
+
+          <ActionTable actions={s.actions} onSource={openSource} />
+
+          <div className="grid-2-even" id="decisions">
+            <div className="card">
+              <div className="card-head"><h2>Decisions</h2><span className="sub num">{s.decisions.length}</span></div>
+              {s.decisions.length === 0 ? <div className="empty">No decisions recorded.</div> : (
+                <div className="list">{s.decisions.map((d) => (
+                  <div key={d.id} className="list-item" style={{ gap: 4 }}>
+                    <div className="row between">
+                      <span className="task-title" style={d.review_state === "superseded" ? { textDecoration: "line-through", color: "var(--muted)" } : undefined}>{d.text}</span>
+                      {d.review_state === "superseded" ? <span className="tag tag-neutral">Superseded</span> : <span className="tiny muted">{fmtDate(d.meeting.date)}</span>}
+                    </div>
+                    <div className="small"><span className="quote">{d.evidence_quote}</span> <button className="link" onClick={() => openSource(d)}>View source</button></div>
+                  </div>
+                ))}</div>
+              )}
+            </div>
+            <div className="card">
+              <div className="card-head"><h2>Risks</h2><span className="sub num">{s.risks.length}</span></div>
+              {s.risks.length === 0 ? <div className="empty">No risks recorded.</div> : (
+                <div className="list">{s.risks.map((r) => (
+                  <div key={r.id} className="list-item" style={{ gap: 4 }}>
+                    <div className="row between">
+                      <span className="task-title">{r.text}</span>
+                      {r.severity && r.severity !== "UNKNOWN" && <span className={`tag ${r.severity === "high" ? "tag-red" : "tag-neutral"}`} style={{ textTransform: "capitalize" }}>{r.severity}</span>}
+                    </div>
+                    <div className="small muted">Owner: {r.owner ?? <span className="unknown">not stated</span>}</div>
+                    <div className="small"><span className="quote">{r.evidence_quote}</span> <button className="link" onClick={() => openSource(r)}>View source</button></div>
+                  </div>
+                ))}</div>
+              )}
+            </div>
+          </div>
+
+          <div className="card" id="meetings">
+            <div className="card-head"><h2>Meetings</h2><span className="sub num">{s.meetings.length}</span><div className="spacer" />
+              <button className="btn btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={13} />Add</button></div>
+            {s.meetings.length === 0 ? <div className="empty">No meetings yet. Add notes to get started.</div> : (
+              <table className="table">
+                <thead><tr><th>Meeting</th><th>Date</th><th>Engine</th><th>Model calls</th><th>Rejected claims</th></tr></thead>
+                <tbody>{[...s.meetings].reverse().map((m) => (
+                  <tr key={m.id}>
+                    <td className="task-title">{m.topic}</td>
+                    <td className="num">{fmtDate(m.meeting_date)}</td>
+                    <td className="mono">{m.model}</td>
+                    <td className="num">{m.attempts}</td>
+                    <td className="small">{m.rejected.length ? m.rejected.map((r) => `${r.text} (${r.reason})`).join("; ") : <span className="faint">None</span>}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </div>
+
+          <DemoControls today={s.today} simulated={s.simulated} emails={s.emails} />
+        </main>
+      </div>
+
+      {adding && <NewMeeting demos={demos} model={s.ai.model} live={live} onClose={() => setAdding(false)} />}
+      {source && (
+        <SourceSheet meetingId={source.meeting_id} start={source.ev_start} end={source.ev_end} title={source.text}
+                     subtitle={`${source.kind === "action" ? "Task" : source.kind === "risk" ? "Risk" : "Decision"} · owner ${source.owner ?? "not stated"}`}
+                     onClose={() => setSource(null)} />
       )}
-    </>
+    </div>
   );
 }

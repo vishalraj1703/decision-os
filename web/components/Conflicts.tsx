@@ -2,26 +2,34 @@
 
 import { useState } from "react";
 import { api, ApiError, Conflict, fmtDate, Meeting } from "@/lib/api";
+import Icon from "./Icon";
 
-const STATUS: Record<Conflict["status"], string> = {
-  open: "Open", confirmed_current: "Current decision confirmed", reverted: "Reverted to previous", follow_up: "Follow-up meeting",
+const RESOLVED: Record<Conflict["status"], string> = {
+  open: "Open", confirmed_current: "New decision confirmed", reverted: "Reverted", follow_up: "Follow-up meeting",
 };
 
 export default function Conflicts({ items, meetings, live }: { items: Conflict[]; meetings: Meeting[]; live: boolean }) {
-  if (!items.length) return null;
-  const date = (id: string | null) => fmtDate(meetings.find((m) => m.id === id)?.meeting_date ?? null);
   const open = items.filter((c) => c.status === "open").length;
+  const date = (id: string | null) => fmtDate(meetings.find((m) => m.id === id)?.meeting_date ?? null);
   return (
-    <section className="card" aria-labelledby="cf-h" style={{ borderColor: open ? "#6b4a1c" : undefined }}>
-      <h2 id="cf-h">Decision conflicts {open > 0 && <span className="chip chip-orange">{open} open</span>}</h2>
-      <div className="stack">
-        {items.map((c) => <Card key={c.id} c={c} prevDate={c.previous_meeting_id ? date(c.previous_meeting_id) : "earlier (stated in these notes)"} curDate={date(c.meeting_id)} live={live} />)}
+    <div className="card" id="conflicts">
+      <div className="card-head">
+        <h2>Decision conflicts</h2>
+        {open > 0 && <span className="tag tag-red">{open} open</span>}
+        <div className="spacer" />
+        <span className="tiny muted">Decisions that reverse an earlier one</span>
       </div>
-    </section>
+      {items.length === 0 ? <div className="empty">No contradictions between meetings.</div> : (
+        <div className="list">
+          {items.map((c) => <Card key={c.id} c={c} live={live} curDate={date(c.meeting_id)}
+                                  prevDate={c.previous_meeting_id ? date(c.previous_meeting_id) : "Earlier (per these notes)"} />)}
+        </div>
+      )}
+    </div>
   );
 }
 
-function Card({ c, prevDate, curDate, live }: { c: Conflict; prevDate: string; curDate: string; live: boolean }) {
+function Card({ c, curDate, prevDate, live }: { c: Conflict; curDate: string; prevDate: string; live: boolean }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const act = async (action: string) => {
@@ -30,27 +38,28 @@ function Card({ c, prevDate, curDate, live }: { c: Conflict; prevDate: string; c
     catch (e) { setErr(e instanceof ApiError ? e.message : String(e)); }
     finally { setBusy(false); }
   };
+  const found = c.source !== "cross_meeting" ? "Stated in the notes themselves"
+    : live ? "Matched across meetings by Qualcomm embeddings and reranker, confirmed by the chat model"
+    : "Matched by the replay engine (no Qualcomm key)";
   return (
-    <div className="conflict" id={`conflict-${c.id}`}>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <strong style={{ fontSize: 15 }}>{c.topic}</strong>
-        <span className={`chip ${c.status === "open" ? "chip-orange" : "chip-green"}`}>{STATUS[c.status]}{c.resolved_by ? ` · ${c.resolved_by}` : ""}</span>
+    <div className="list-item" id={`conflict-${c.id}`}>
+      <div className="row between">
+        <div className="task-title" style={{ textTransform: "capitalize" }}>{c.topic}</div>
+        <span className={`tag ${c.status === "open" ? "tag-red" : "tag-ok"}`}>{RESOLVED[c.status]}{c.resolved_by ? ` · ${c.resolved_by}` : ""}</span>
       </div>
-      <p className="muted" style={{ fontSize: 13, margin: "4px 0 0" }}>This contradicts an earlier decision.{c.explanation ? ` ${c.explanation}` : ""}</p>
-      <div className="vs">
-        <div><span className="faint" style={{ fontSize: 11.5 }}>NOW · {curDate}</span><b>{c.current}</b><span className="evidence">“{c.current_evidence}”</span></div>
-        <div><span className="faint" style={{ fontSize: 11.5 }}>BEFORE · {prevDate}</span><b>{c.previous}</b><span className="evidence">“{c.previous_evidence}”</span></div>
+      <div className="versus">
+        <div><span className="when">This meeting · {curDate}</span><span className="what">{c.current}</span><span className="quote small">{c.current_evidence}</span></div>
+        <div className="is-old"><span className="when">Before · {prevDate}</span><span className="what">{c.previous}</span><span className="quote small">{c.previous_evidence}</span></div>
       </div>
       {c.status === "open" && (
         <div className="row">
-          <button className="btn-gold" disabled={busy} onClick={() => act("confirm_current")}>Confirm {c.current}</button>
-          <button disabled={busy} onClick={() => act("revert")}>Revert to {c.previous}</button>
-          <button disabled={busy} onClick={() => act("follow_up")}>Needs follow-up meeting</button>
+          <button className="btn btn-primary" disabled={busy} onClick={() => act("confirm_current")}>Keep {c.current}</button>
+          <button className="btn" disabled={busy} onClick={() => act("revert")}>Revert to {c.previous}</button>
+          <div className="spacer" />
+          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => act("follow_up")}>Follow-up meeting</button>
         </div>
       )}
-      <p className="faint" style={{ fontSize: 11.5, marginTop: 8 }}>
-        {c.source !== "cross_meeting" ? "Stated in the notes themselves." : live ? "Found by Qualcomm embeddings + reranker across meetings, confirmed by the chat model." : "Found by the dev replay stand-ins (no Qualcomm key): not a Qualcomm result."}
-      </p>
+      <div className="why"><Icon name="info" size={13} />{found}</div>
       {err && <div className="alert alert-error">{err}</div>}
     </div>
   );

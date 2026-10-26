@@ -1,92 +1,139 @@
 "use client";
 
-import { useState } from "react";
-import { api, ApiError, Item, ManagerState, STATUS_LABEL } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, ApiError, fmtDate, Item, ManagerState, STATUS_LABEL } from "@/lib/api";
+import { statusLabel } from "./Flowchart";
+import Icon from "./Icon";
 
-export function StatsBar({ stats }: { stats: ManagerState["stats"] }) {
-  return (
-    <div className="stats">
-      <div className="stat"><b>{stats.teams_in_scope}</b><span>Teams in scope</span></div>
-      <div className={`stat${stats.blocked_handoffs ? " alarm" : ""}`}><b>{stats.blocked_handoffs}</b><span>Blocked handoffs</span></div>
-      <div className={`stat${stats.unassigned_actions ? " warn" : ""}`}><b>{stats.unassigned_actions}</b><span>Unassigned actions</span></div>
-    </div>
-  );
-}
+type Person = { name: string; email: string; team: string; role: string };
 
-export function Callout({ c }: { c: ManagerState["callout"] }) {
+export function Metrics({ stats, actions }: { stats: ManagerState["stats"]; actions: Item[] }) {
+  const blocked = actions.filter((a) => a.status === "blocked" || a.overdue);
+  const atRisk = actions.filter((a) => a.at_risk).length;
   return (
-    <div className={`callout callout-${c.severity}`} role="status" aria-live="polite">
-      <span aria-hidden="true" style={{ fontSize: 24 }}>{c.severity === "red" ? "⛔" : c.severity === "amber" ? "⚠" : "ℹ"}</span>
-      <div>
-        {c.text}
-        <small>{c.source === "ai" ? "Diagnosis by the Qualcomm model" : "Rule-based summary (AI diagnosis pending or unavailable)"}</small>
+    <div className="card metrics">
+      <div className="metric">
+        <div className="k"><Icon name="users" size={14} />Teams in scope</div>
+        <div className="v">{stats.teams_in_scope}</div>
+        <div className="c">{actions.length} tracked task{actions.length === 1 ? "" : "s"}</div>
+      </div>
+      <div className={`metric${stats.blocked_handoffs ? " is-red" : ""}`}>
+        <div className="k"><Icon name="ban" size={14} />Blocked handoffs</div>
+        <div className="v">{stats.blocked_handoffs}</div>
+        <div className="c">{blocked.length ? `${atRisk} downstream task${atRisk === 1 ? "" : "s"} at risk` : "Nothing is holding up another team"}</div>
+      </div>
+      <div className={`metric${stats.unassigned_actions ? " is-amber" : ""}`}>
+        <div className="k"><Icon name="help" size={14} />Unassigned actions</div>
+        <div className="v">{stats.unassigned_actions}</div>
+        <div className="c">{stats.unassigned_actions ? "Owner or date not stated in the notes" : "Every task has an owner and a date"}</div>
       </div>
     </div>
   );
 }
 
-function Unknown({ label }: { label: string }) {
-  return <span className="unknown">{label}<i className="qmark" aria-hidden="true">?</i></span>;
+export function Callout({ c }: { c: ManagerState["callout"] }) {
+  const icon = c.severity === "red" ? "octagon" : c.severity === "amber" ? "alert" : "info";
+  return (
+    <div className={`callout ${c.severity}`} role="status" aria-live="polite">
+      <div className="bar" />
+      <div className="inner">
+        <Icon name={icon} size={20} />
+        <div>
+          <div className="msg">{c.text}</div>
+          <div className="src">{c.source === "ai" ? "Diagnosis by the Qualcomm model" : "Summary from task status. The model's diagnosis appears when live inference is configured."}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function Confidence({ v }: { v: number }) {
-  const pct = Math.round(v * 100);
-  const cls = v >= 0.85 ? "conf-high" : v >= 0.6 ? "conf-mid" : "conf-low";
-  return <span className={cls} title="Self-reported by the model, not calibrated">{pct}%</span>;
+function Unknown({ children }: { children: React.ReactNode }) {
+  return <span className="unknown">{children}<Icon name="help" size={13} /></span>;
 }
 
-function short(q: string) {
+function short(q: string, n = 12) {
   const w = q.split(/\s+/);
-  return w.length > 11 ? w.slice(0, 11).join(" ") + "…" : q;
+  return w.length > n ? w.slice(0, n).join(" ") + "…" : q;
 }
 
-export function ActionTable({ actions, onEvidence }: { actions: Item[]; onEvidence: (i: Item) => void }) {
-  if (!actions.length) return <p className="muted">No action items yet.</p>;
+function Deadline({ i }: { i: Item }) {
+  if (i.deadline_date) {
+    return <span>{fmtDate(i.deadline_date)}{i.deadline_status === "needs_confirmation" && <div className="tiny" style={{ color: "var(--amber)" }}>“{i.deadline_raw}” · confirm date</div>}</span>;
+  }
+  if (i.deadline_status === "after_dependency") return <span className="muted">After dependency</span>;
+  return <Unknown>unclear — needs follow-up</Unknown>;
+}
+
+type Filter = "all" | "review" | "risk" | "done";
+
+export function ActionTable({ actions, onSource }: { actions: Item[]; onSource: (i: Item) => void }) {
+  const [filter, setFilter] = useState<Filter>("all");
+  const rows = actions.filter((a) =>
+    filter === "all" ? true : filter === "review" ? a.missing_info.length > 0
+      : filter === "risk" ? a.at_risk || a.overdue || a.status === "blocked" : a.status === "done");
+  const count = (f: Filter) => actions.filter((a) => f === "review" ? a.missing_info.length > 0 : f === "risk" ? a.at_risk || a.overdue || a.status === "blocked" : a.status === "done").length;
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table>
-        <thead><tr><th>Task</th><th>Owner</th><th>Deadline</th><th>Status</th><th>Evidence</th><th>Confidence*</th></tr></thead>
-        <tbody>
-          {actions.map((a) => {
-            const missing = a.missing_info.length > 0;
-            return (
-              <tr key={a.id} className={missing ? "missing" : ""} id={`row-${a.id}`}>
-                <td>
-                  {a.text}
-                  {missing && <> <span className="chip chip-review">Needs Review</span></>}
-                  <div className="faint" style={{ fontSize: 11.5 }}>{a.meeting.topic} · {a.meeting.date}</div>
-                </td>
-                <td>{a.owner ?? <Unknown label="UNKNOWN" />}{a.team && <div className="faint" style={{ fontSize: 11.5 }}>{a.team}</div>}</td>
-                <td>{a.deadline_date ? a.deadline_text : a.deadline_status === "after_dependency" ? <span className="muted">after dependency</span> : <Unknown label="unclear — needs follow-up" />}</td>
-                <td><span className={`chip chip-${a.color}`}>{a.overdue && a.status !== "done" ? "Overdue" : a.at_risk ? "At risk" : STATUS_LABEL[a.status]}</span></td>
-                <td><span className="evidence">“{short(a.evidence_quote)}”</span> <button className="btn-link" onClick={() => onEvidence(a)} aria-label={`View source for ${a.text}`}>view source</button></td>
-                <td><Confidence v={a.confidence} /></td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <p className="faint" style={{ fontSize: 11.5, marginTop: 6 }}>* Confidence is self-reported by the model, not a measured accuracy. Trust comes from the evidence link.</p>
+    <div className="card" id="actions">
+      <div className="card-head">
+        <h2>Action items</h2>
+        <span className="sub num">{actions.length}</span>
+        <div className="spacer" />
+        <div className="segmented" role="group" aria-label="Filter actions">
+          {([["all", "All"], ["review", "Needs review"], ["risk", "At risk"], ["done", "Done"]] as [Filter, string][]).map(([f, l]) => (
+            <button key={f} aria-pressed={filter === f} onClick={() => setFilter(f)}>{l}{f !== "all" && <span className="num" style={{ marginLeft: 5, color: "var(--faint)" }}>{count(f)}</span>}</button>
+          ))}
+        </div>
+      </div>
+      {rows.length === 0 ? <div className="empty">{actions.length ? "Nothing in this view." : "No action items yet."}</div> : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead><tr><th style={{ width: "26%" }}>Task</th><th>Owner</th><th>Deadline</th><th>Status</th><th style={{ width: "30%" }}>Evidence</th><th>Confidence</th></tr></thead>
+            <tbody>
+              {rows.map((a) => {
+                const missing = a.missing_info.length > 0;
+                return (
+                  <tr key={a.id} id={`row-${a.id}`} className={missing ? "is-missing" : ""}>
+                    <td>
+                      <div className="task-title">{a.text}</div>
+                      <div className="tiny muted" style={{ marginTop: 2 }}>{a.meeting.topic} · {fmtDate(a.meeting.date)}</div>
+                      {missing && <span className="tag tag-review" style={{ marginTop: 6 }}>Needs review</span>}
+                    </td>
+                    <td>{a.owner ? <><div>{a.owner}</div><div className="tiny muted">{a.team}</div></> : <Unknown>UNKNOWN</Unknown>}</td>
+                    <td><Deadline i={a} /></td>
+                    <td><span className={`status s-${a.color}`}><i />{statusLabel(a)}</span>
+                      {a.status === "blocked" && a.blocked_reason && <div className="tiny muted" style={{ marginTop: 3 }}>{a.blocked_reason}</div>}</td>
+                    <td><span className="quote">{short(a.evidence_quote)}</span><div><button className="link" onClick={() => onSource(a)} aria-label={`View source for ${a.text}`}>View source</button></div></td>
+                    <td><span className="conf"><span className="conf-bar"><b style={{ width: `${Math.round(a.confidence * 100)}%` }} /></span>{Math.round(a.confidence * 100)}%</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="card-foot">Confidence is the model's own estimate, not a measured accuracy. Every row links to the sentence it came from.</div>
     </div>
   );
 }
 
-const MISSING_LABEL: Record<string, string> = {
-  owner: "Owner not stated in notes", deadline: "Deadline not stated in notes", deadline_confirmation: "Deadline wording is relative; confirm the date",
-};
+const MISSING: Record<string, string> = { owner: "Owner not stated", deadline: "Deadline not stated", deadline_confirmation: "Date needs confirmation" };
 
-export function NeedsReview({ items, people, onEvidence }: {
-  items: Item[]; people: { name: string; email: string; team: string; role: string }[]; onEvidence: (i: Item) => void;
-}) {
-  if (!items.length) return <p className="muted">Nothing needs review. Every item has an owner and a deadline from the notes.</p>;
+export function NeedsReview({ items, people, onSource }: { items: Item[]; people: Person[]; onSource: (i: Item) => void }) {
   return (
-    <div className="stack">
-      {items.map((i) => <ReviewCard key={i.id} item={i} people={people} onEvidence={onEvidence} />)}
+    <div className="card" id="review">
+      <div className="card-head">
+        <h2>Needs review</h2><span className="sub num">{items.length}</span>
+        <div className="spacer" />
+        <span className="tiny muted">Gaps the notes leave open</span>
+      </div>
+      {items.length === 0 ? <div className="empty">Nothing to review. Every task has an owner and a date from the notes.</div> : (
+        <div className="list">{items.map((i) => <ReviewItem key={i.id} item={i} people={people} onSource={onSource} />)}</div>
+      )}
     </div>
   );
 }
 
-function ReviewCard({ item, people, onEvidence }: { item: Item; people: { name: string; email: string; team: string; role: string }[]; onEvidence: (i: Item) => void }) {
+function ReviewItem({ item, people, onSource }: { item: Item; people: Person[]; onSource: (i: Item) => void }) {
   const [owner, setOwner] = useState("");
   const [date, setDate] = useState(item.deadline_date ?? "");
   const [busy, setBusy] = useState(false);
@@ -97,73 +144,95 @@ function ReviewCard({ item, people, onEvidence }: { item: Item; people: { name: 
     catch (e) { setErr(e instanceof ApiError ? e.message : String(e)); }
     finally { setBusy(false); }
   };
+  const needsOwner = item.missing_info.includes("owner");
+  const needsDate = item.missing_info.includes("deadline");
+  const confirm = item.missing_info.includes("deadline_confirmation");
   return (
-    <div className="card" style={{ background: "var(--panel-2)" }}>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <strong>{item.kind === "action" ? "Task" : item.kind === "risk" ? "Risk" : "Decision"}: {item.text}</strong>
-        {item.review_state === "follow_up" && <span className="chip chip-gold">Follow-up meeting</span>}
-      </div>
-      <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
-        {item.missing_info.map((m) => <li key={m} className="muted">{MISSING_LABEL[m] ?? m}{m === "deadline_confirmation" && item.deadline_date ? `: '${item.deadline_raw}' read as ${item.deadline_text.replace(" (needs confirmation)", "")}` : ""}</li>)}
-      </ul>
-      {item.checks.length > 0 && <p className="faint" style={{ fontSize: 12 }}>{item.checks.join(" ")}</p>}
-      <p className="evidence" style={{ fontSize: 13 }}>“{item.evidence_quote}” <button className="btn-link" onClick={() => onEvidence(item)}>view source</button></p>
-      <div className="row">
-        {item.missing_info.includes("owner") && item.kind !== "decision" && (
-          <>
-            <select aria-label="Assign owner" value={owner} onChange={(e) => setOwner(e.target.value)} style={{ width: 170 }}>
-              <option value="">Assign owner…</option>
-              {people.filter((p) => p.role === "employee").map((p) => <option key={p.email} value={p.email}>{p.name} · {p.team}</option>)}
-            </select>
-            <button disabled={busy || !owner} onClick={() => act("assign_owner", owner)}>Assign</button>
-          </>
-        )}
-        {item.missing_info.includes("deadline_confirmation") && (
-          <button disabled={busy} onClick={() => act("confirm_deadline")}>Confirm {item.deadline_text.replace(" (needs confirmation)", "")}</button>
-        )}
-        {(item.missing_info.includes("deadline") || item.missing_info.includes("deadline_confirmation")) && (
-          <>
-            <input type="date" aria-label="Set deadline" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 150 }} />
-            <button disabled={busy || !date} onClick={() => act("set_deadline", date)}>Set deadline</button>
-          </>
-        )}
-        {item.review_state !== "follow_up" && <button disabled={busy} onClick={() => act("follow_up")}>Needs follow-up meeting</button>}
-        <button disabled={busy} onClick={() => act("discard")} className="btn-small">Discard as noise</button>
-      </div>
-      {err && <div className="alert alert-error" style={{ marginTop: 8 }}>{err}</div>}
-    </div>
-  );
-}
-
-export function TeamStrip({ teams }: { teams: ManagerState["teams"] }) {
-  if (!teams.length) return null;
-  return (
-    <div className="strip" aria-label="Team status">
-      {teams.map((t) => (
-        <div key={t.team} className="team-pill">
-          <i className={`dot dot-${t.color}`} aria-hidden="true" />
-          <div><strong>{t.team}</strong><div className="faint" style={{ fontSize: 12 }}>{t.label} · {t.tasks} task{t.tasks === 1 ? "" : "s"}</div></div>
+    <div className="list-item">
+      <div className="row between">
+        <div>
+          <div className="tiny muted" style={{ fontWeight: 600 }}>{item.kind === "risk" ? "Risk" : "Task"}{item.owner ? ` · ${item.owner}` : ""}</div>
+          <div className="task-title">{item.text}</div>
         </div>
+        {item.review_state === "follow_up" && <span className="tag tag-accent">Follow-up meeting</span>}
+      </div>
+      <div className="missing">{item.missing_info.map((m) => <span key={m} className="tag tag-review">{MISSING[m] ?? m}</span>)}</div>
+      <div className="small"><span className="quote">{item.evidence_quote}</span> <button className="link" onClick={() => onSource(item)}>View source</button></div>
+      {item.checks.filter((c) => c.includes("not named")).map((c) => (
+        <div key={c} className="why"><Icon name="info" size={13} />{c}</div>
       ))}
+      <div className="row">
+        {needsOwner && (
+          <>
+            <select className="select" aria-label="Owner" value={owner} onChange={(e) => setOwner(e.target.value)} style={{ width: 168 }}>
+              <option value="">Choose owner…</option>
+              {people.filter((p) => p.role === "employee").map((p) => <option key={p.email} value={p.email}>{p.name} ({p.team})</option>)}
+            </select>
+            <button className="btn btn-primary" disabled={busy || !owner} onClick={() => act("assign_owner", owner)}>Assign</button>
+          </>
+        )}
+        {confirm && <button className="btn btn-primary" disabled={busy} onClick={() => act("confirm_deadline")}><Icon name="check" size={14} />Confirm {fmtDate(item.deadline_date)}</button>}
+        {(needsDate || confirm) && (
+          <>
+            <input className="input" type="date" aria-label="Deadline" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 150 }} />
+            <button className="btn" disabled={busy || !date} onClick={() => act("set_deadline", date)}>Set date</button>
+          </>
+        )}
+        <div className="spacer" />
+        {item.review_state !== "follow_up" && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => act("follow_up")}>Follow-up meeting</button>}
+        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => act("discard")}>Discard</button>
+      </div>
+      {err && <div className="alert alert-error">{err}</div>}
     </div>
   );
 }
 
-export function ExtractBox({ model, live, demos }: { model: string; live: boolean; demos: { label: string; date: string; notes: string }[] }) {
-  const today = new Date();
-  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+export function TeamStatus({ teams }: { teams: ManagerState["teams"] }) {
+  if (!teams.length) return null;
+  const label: Record<string, string> = { red: "Blocked", orange: "Needs attention", grey: "Waiting", green: "Healthy" };
+  return (
+    <div className="card">
+      <div className="teams">
+        {teams.map((t) => (
+          <div key={t.team} className="team">
+            <b>{t.team}</b>
+            <span className={`status s-${t.color}`}><i />{label[t.color]}</span>
+            <span className="tiny muted">{t.tasks} task{t.tasks === 1 ? "" : "s"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function NewMeeting({ demos, model, live, onClose }: {
+  demos: { label: string; date: string; notes: string }[]; model: string; live: boolean; onClose: () => void;
+}) {
+  const t = new Date();
+  const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
   const [notes, setNotes] = useState("");
   const [date, setDate] = useState(iso);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose, busy]);
 
-  async function extract() {
+  async function run() {
     setBusy(true); setMsg(null);
     try {
-      const r = await api<{ items: number; attempts: number; latency_ms: number; topic: string; rejected: { text: string; reason: string }[] }>(
+      const r = await api<{ items: number; attempts: number; latency_ms: number; topic: string; rejected: { text: string }[] }>(
         "extract", "POST", { notes, meeting_date: date });
-      const rej = r.rejected.length ? ` ${r.rejected.length} claim${r.rejected.length === 1 ? "" : "s"} rejected (no matching sentence).` : "";
-      setMsg({ ok: true, text: `“${r.topic}”: ${r.items} items extracted${live ? ` in ${(r.latency_ms / 1000).toFixed(1)} s` : ""}${r.attempts > 1 ? " after one corrective retry" : ""}.${rej}` });
+      const parts = [`${r.items} item${r.items === 1 ? "" : "s"} extracted from “${r.topic}”`];
+      if (live) parts.push(`in ${(r.latency_ms / 1000).toFixed(1)} s`);
+      if (r.attempts > 1) parts.push("after one corrective retry");
+      let text = parts.join(" ") + ".";
+      if (r.rejected.length) text += ` ${r.rejected.length} claim${r.rejected.length === 1 ? " was" : "s were"} rejected because no matching sentence exists in the notes.`;
+      setMsg({ ok: true, text });
       setNotes("");
     } catch (e) {
       setMsg({ ok: false, text: e instanceof ApiError ? e.message : String(e) });
@@ -173,23 +242,46 @@ export function ExtractBox({ model, live, demos }: { model: string; live: boolea
   }
 
   return (
-    <div className="card">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Meeting notes</h2>
-        <div className="row">
-          {demos.map((d) => <button key={d.label} className="btn-small" onClick={() => { setNotes(d.notes); setDate(d.date); }} disabled={busy}>Load {d.label}</button>)}
+    <>
+      <div className="scrim" onClick={() => !busy && onClose()} />
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="nm-title">
+        <div className="card-head" style={{ borderBottom: "1px solid var(--line)" }}>
+          <h2 id="nm-title" style={{ fontSize: 16 }}>Add meeting notes</h2>
+          <div className="spacer" />
+          <button className="btn btn-ghost btn-icon" aria-label="Close" onClick={onClose} disabled={busy}><Icon name="x" /></button>
+        </div>
+        <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {demos.length > 0 && (
+            <div className="row small"><span className="muted">Examples:</span>
+              {demos.map((d) => <button key={d.label} className="btn btn-sm" onClick={() => { setNotes(d.notes); setDate(d.date); }} disabled={busy}>{d.label}</button>)}
+            </div>
+          )}
+          <div>
+            <label className="label" htmlFor="nm-notes">Notes</label>
+            <textarea id="nm-notes" ref={ref} className="textarea" rows={8} value={notes} onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Paste a transcript, bullet points or a rough summary." />
+          </div>
+          <div className="row">
+            <div style={{ width: 170 }}>
+              <label className="label" htmlFor="nm-date">Meeting date</label>
+              <input id="nm-date" className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <p className="small muted" style={{ flex: 1, alignSelf: "flex-end", minWidth: 200 }}>Relative dates like “Friday” are read from this date and flagged for confirmation.</p>
+          </div>
+          {msg && <div className={`alert ${msg.ok ? "alert-ok" : "alert-error"}`} role="status"><Icon name={msg.ok ? "checkCircle" : "alert"} size={15} />{msg.text}</div>}
+        </div>
+        <div className="card-foot row between" style={{ background: "var(--surface-2)" }}>
+          <span>Sent to {live ? `Qualcomm Cloud AI (${model})` : "the replay engine (no Qualcomm key)"}</span>
+          <div className="row">
+            <button className="btn" onClick={onClose} disabled={busy}>{msg?.ok ? "Done" : "Cancel"}</button>
+            <button className="btn btn-primary" onClick={run} disabled={busy || !notes.trim()}>
+              {busy ? <><span className="spinner" />Asking the model…</> : "Extract"}
+            </button>
+          </div>
         </div>
       </div>
-      <textarea aria-label="Meeting notes" rows={5} value={notes} onChange={(e) => setNotes(e.target.value)} style={{ marginTop: 10 }}
-                placeholder="Paste raw meeting notes: transcript, bullet list or summary." />
-      <div className="row" style={{ marginTop: 10 }}>
-        <label htmlFor="mdate" style={{ margin: 0 }}>Meeting date</label>
-        <input id="mdate" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 160 }} />
-        <button className="btn-gold" onClick={extract} disabled={busy || !notes.trim()}>{busy ? <><span className="spinner" /> Asking the model...</> : "Extract"}</button>
-        {busy && <span className="faint">{model}</span>}
-      </div>
-      {msg && <div className={`alert ${msg.ok ? "alert-ok" : "alert-error"}`} style={{ marginTop: 10 }} role="status">{msg.text}</div>}
-      <p className="faint" style={{ fontSize: 12, marginTop: 8 }}>Notes are sent to Qualcomm Cloud AI for extraction. Every item must quote a sentence from them.</p>
-    </div>
+    </>
   );
 }
+
+export { STATUS_LABEL };
