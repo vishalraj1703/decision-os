@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+data/
+node_modules/
+.next/
+.pytest_cache/
+docs/qualcomm-check.json

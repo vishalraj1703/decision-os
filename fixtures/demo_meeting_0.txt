@@ -1,0 +1,6 @@
+Checkout release kickoff.
+We agreed to deploy on Azure.
+Ravi will approve the API contract by Oct 27.
+Asha will build the checkout flow once Ravi approves the API contract, by Oct 28.
+Meera will run QA on checkout after Asha finishes, by Oct 29.
+The checkout release is planned for Oct 30.
