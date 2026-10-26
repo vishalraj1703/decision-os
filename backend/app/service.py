@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from . import cascade, conflicts, dates, extract
 from .config import Settings
 from .db import DB, new_id
+from .emailer import Mailer
 from .prompts import callout_messages
 from .roster import BY_EMAIL, PEOPLE, Person, find_person
 
@@ -291,8 +292,15 @@ class Service:
         cascade.recompute(self.db, self.s.timezone)
         return self.db.item(item_id) or {}
 
+    @property
+    def mailer(self) -> Mailer:
+        return Mailer(self.s, self.db)
+
     def on_dependency_complete(self, upstream: dict, downstream: dict) -> None:
-        """Hook for email trigger 3 (Block 7)."""
+        """Email trigger 3: tell the waiting employee their input is ready."""
+        owner = next((p for p in PEOPLE if p.id == downstream["owner_user_id"]), None)
+        if owner:
+            self.mailer.dependency_done(upstream, downstream, owner)
 
     # Deadline cascade (spec 5.5), run by the scheduler and by the demo button
     def run_check(self) -> dict:
@@ -320,8 +328,25 @@ class Service:
                 "newly_at_risk": [r["text"] for r in newly_risk], "emails": emails}
 
     def send_deadline_emails(self, on: dt.date, actions: list[dict]) -> list[str]:
-        """Email triggers 1 and 2 (Block 7)."""
-        return []
+        """Email triggers 1 (due within 24 hours) and 2 (overdue, manager in cc)."""
+        sent: list[str] = []
+        people = {p.id: p for p in PEOPLE}
+        fresh = {a["id"]: a for a in self.db.items("WHERE kind='action'")}
+        for a in actions:
+            a = fresh.get(a["id"], a)
+            owner = people.get(a["owner_user_id"] or "")
+            if owner is None or a["status"] == "done" or not a["deadline_date"] or a["review_state"] == "discarded":
+                continue
+            due = dt.date.fromisoformat(a["deadline_date"])
+            eid = None
+            if due == on + dt.timedelta(days=1):
+                eid = self.mailer.due_tomorrow(a, owner)
+            elif due < on:
+                down = [d for d in fresh.values() if a["id"] in d["depends_on"] and d["status"] != "done"]
+                eid = self.mailer.overdue(a, owner, down)
+            if eid:
+                sent.append(eid)
+        return sent
 
     def set_clock(self, me: Person, date: dt.date | None) -> dict:
         if me.role != "manager":
