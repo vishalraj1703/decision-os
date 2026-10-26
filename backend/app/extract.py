@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -76,27 +77,101 @@ class ExtractOutcome:
     model: str
 
 
+def _loads_lenient(body: str):
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        # Common small-model slips: trailing commas, // comments, smart quotes around keys.
+        fixed = re.sub(r"//[^\n\"]*$", "", body, flags=re.M)
+        fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+        fixed = fixed.replace("“", '"').replace("”", '"')
+        return json.loads(fixed)
+
+
 def _parse(text: str) -> dict:
     body = (text or "").strip()
-    if body.startswith("```"):
-        body = body.split("\n", 1)[1] if "\n" in body else ""
-        body = body.rsplit("```", 1)[0]
+    fence = re.search(r"```(?:json|JSON)?\s*\n(.*?)```", body, re.S)
+    if fence:
+        body = fence.group(1).strip()
     try:
-        obj = json.loads(body)
+        obj = _loads_lenient(body)
     except json.JSONDecodeError:
         a, b = body.find("{"), body.rfind("}")
         if a < 0 or b <= a:
             raise ValueError("reply is not JSON") from None
-        obj = json.loads(body[a : b + 1])
+        try:
+            obj = _loads_lenient(body[a : b + 1])
+        except json.JSONDecodeError as e:
+            raise ValueError(f"reply is not valid JSON ({e.msg})") from None
     if not isinstance(obj, dict):
         raise ValueError("reply JSON is not an object")
     return obj
 
 
+_KEYS = {"meeting_topic", "decisions", "actions", "risks", "contradictions"}
+_ALIASES = {"topic": "meeting_topic", "action_items": "actions", "tasks": "actions", "conflicts": "contradictions"}
+
+
+def _coerce(data: dict) -> dict:
+    """Normalize harmless shape variations before strict validation (never invents content)."""
+    if not (_KEYS & set(data)) and len(data) == 1 and isinstance(next(iter(data.values())), dict):
+        data = next(iter(data.values()))  # {"result": {...}}
+    data = {(_ALIASES.get(k.lower(), k.lower()) if isinstance(k, str) else k): v for k, v in data.items()}
+    data.setdefault("meeting_topic", "Meeting")
+    for group in ("decisions", "actions", "risks", "contradictions"):
+        v = data.get(group)
+        if v is None:
+            data[group] = []
+        elif isinstance(v, dict):
+            data[group] = [v]
+    for group in ("decisions", "actions", "risks"):
+        for it in data[group]:
+            if not isinstance(it, dict):
+                continue
+            mi = it.get("missing_info")
+            if isinstance(mi, str):
+                it["missing_info"] = [x.strip() for x in re.split(r"[,;]", mi) if x.strip()]
+            c = it.get("confidence")
+            if isinstance(c, str):
+                try:
+                    it["confidence"] = float(c.strip().rstrip("%")) / (100 if "%" in c else 1)
+                except ValueError:
+                    it["confidence"] = 0.5
+            if it.get("evidence_quote") is None and isinstance(it.get("evidence"), str):
+                it["evidence_quote"] = it["evidence"]
+            for k in ("owner", "deadline"):
+                if isinstance(it.get(k), list):
+                    it[k] = ", ".join(map(str, it[k])) or None
+    # Actions need ids a1..aN; dependencies may come back as ids, numbers or task names.
+    acts = [a for a in data["actions"] if isinstance(a, dict)]
+    old_to_new: dict[str, str] = {}
+    for n, a in enumerate(acts, 1):
+        old = str(a.get("id", "")).strip().lower()
+        new = f"a{n}"
+        if old:
+            old_to_new[old] = new
+            old_to_new[re.sub(r"\D", "", old) or old] = new
+        old_to_new[str(n)] = old_to_new.get(str(n), new)
+        a["id"] = new
+    by_task = {str(a.get("task", "")).strip().lower(): a["id"] for a in acts}
+    for a in acts:
+        deps = a.get("dependencies") or []
+        if isinstance(deps, str):
+            deps = [d.strip() for d in re.split(r"[,;]", deps) if d.strip()]
+        out = []
+        for d in deps:
+            key = str(d).strip().lower()
+            ref = old_to_new.get(key) or old_to_new.get(re.sub(r"\D", "", key)) or by_task.get(key)
+            if ref and ref != a["id"] and ref not in out:
+                out.append(ref)
+        a["dependencies"] = out
+    return data
+
+
 def _validate(reply_text: str, tool_args: dict | None, notes: str) -> tuple[AIExtraction | None, list[str]]:
     try:
         data = tool_args if tool_args is not None else _parse(reply_text)
-        ext = AIExtraction.model_validate(data)
+        ext = AIExtraction.model_validate(_coerce(data))
     except (ValueError, ValidationError) as e:
         msg = str(e)
         if isinstance(e, ValidationError):

@@ -113,7 +113,18 @@ class Service:
             r["embedding"] = v
 
     def after_ingest(self, meeting_id: str) -> None:
-        """Hooks that run after a meeting is stored: cross-meeting conflicts, then the cascade."""
+        """Hooks that run after a meeting is stored: cross-meeting conflicts, then the cascade.
+
+        Live, the conflict check makes extra Qualcomm calls, so it runs in the background:
+        the extraction returns at once and the conflict card appears via live polling.
+        """
+        cascade.recompute(self.db, self.s.timezone)
+        if getattr(self.ai, "mode", "") == "live":
+            threading.Thread(target=self._detect_conflicts, args=(meeting_id,), daemon=True).start()
+        else:
+            self._detect_conflicts(meeting_id)
+
+    def _detect_conflicts(self, meeting_id: str) -> None:
         try:
             conflicts.detect(self.db, self.ai, meeting_id)
         except Exception:  # noqa: BLE001 - conflict detection must never lose an extraction

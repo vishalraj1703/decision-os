@@ -72,6 +72,7 @@ def attempt(q: Qualcomm, client: str, mode: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=5)
+    ap.add_argument("--apply", action="store_true", help="write the recommended settings into .env")
     args = ap.parse_args()
     s = settings()
     report: dict = {"endpoint": s.qualcomm_endpoint, "model": s.qualcomm_model}
@@ -132,7 +133,25 @@ def main() -> int:
     (ROOT / "docs" / "qualcomm-check.json").write_text(text, encoding="utf-8")
     print("\nSaved docs/qualcomm-check.json")
     print("Recommended settings:", report.get("recommended", "none: no combination returned valid JSON"))
+    if args.apply and report.get("recommended"):
+        apply_env(report["recommended"])
+        print("Applied to .env. Restart the backend to use them.")
     return 0 if good else 1
+
+
+def apply_env(values: dict) -> None:
+    env = ROOT / ".env"
+    lines = env.read_text(encoding="utf-8").splitlines() if env.exists() else []
+    done = set()
+    for i, line in enumerate(lines):
+        key = line.split("=", 1)[0].strip()
+        if key in values and not line.lstrip().startswith("#"):
+            lines[i] = f"{key}={values[key]}"
+            done.add(key)
+    lines += [f"{k}={v}" for k, v in values.items() if k not in done]
+    env.write_text("
+".join(lines) + "
+", encoding="utf-8")
 
 
 if __name__ == "__main__":

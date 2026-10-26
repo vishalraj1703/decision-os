@@ -68,7 +68,7 @@ Browser ──► Next.js (NextAuth session, /api/backend proxy) ──► FastA
 ## Tests
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests     # 45 tests, one file per build block
+.\.venv\Scripts\python -m pytest tests     # 51 tests, one file per build block + messy-model-output hardening
 cd web; npm run build                       # typecheck + production build
 ```
 
@@ -101,8 +101,8 @@ cd web; npm run build                       # typecheck + production build
 backend/app/   config, qualcomm (client), ai (live/replay), schema, prompts, extract, dates, evidence,
                roster, db, service, conflicts, cascade, emailer, main (FastAPI)
 web/           Next.js 16 app: login, manager and employee dashboards, NextAuth, proxy, React Flow
-scripts/       check_qualcomm.py, setup_env.py, demo_seed.py, make_replay.py, start.ps1
+scripts/       check_qualcomm.py (--apply), test_email.py, preflight.py, setup_env.py, demo_seed.py, make_replay.py, start.ps1
 fixtures/      demo meetings and dev replay replies
-tests/         45 tests, one file per build block
-docs/          demo-script.md
+tests/         51 tests (one file per block + messy model output)
+docs/          GO-LIVE.md (steps for key day), demo-script.md
 ```
