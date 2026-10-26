@@ -224,6 +224,53 @@ class Service:
         finally:
             self._callout_busy.discard(sig)
 
+    # Employee execution layer (spec 7)
+    def update_status(self, me: Person, item_id: str, status: str, reason: str | None) -> dict:
+        if status not in STATUSES:
+            raise AppError("INVALID", "Status must be Not Started, In Progress, Blocked or Done.", 422)
+        it = self.db.item(item_id)
+        if it is None or it["kind"] != "action":
+            raise AppError("NOT_FOUND", "Task not found.", 404)
+        if me.role != "manager" and it["owner_user_id"] != me.id:
+            raise AppError("FORBIDDEN", "You can only update your own tasks.", 403)
+        if it["review_state"] == "discarded":
+            raise AppError("INVALID", "This task was discarded.", 422)
+        reason = (reason or "").strip()[:200] or None
+        if it["status"] == status and (status != "blocked" or reason == it["blocked_reason"]):
+            return it
+        self.db.update_item(item_id, status=status, blocked_reason=reason if status == "blocked" else None)
+        actions = [a for a in self.db.items("WHERE kind='action'") if a["review_state"] != "discarded"]
+        by_id = {a["id"]: a for a in actions}
+        downstream = [a for a in actions if item_id in a["depends_on"]]
+        who = it["owner"] or "Someone"
+
+        if status == "blocked":
+            why = f": {reason}" if reason else ""
+            down = ", ".join(f"{d['owner'] or 'UNKNOWN'}'s {d['text']}" for d in downstream)
+            self.db.notify("managers", "blocked", f"{who} marked '{it['text']}' blocked{why}." + (f" This blocks {down}." if down else ""),
+                           link=f"/manager#row-{item_id}", dedupe_key=f"blocked:{item_id}:{reason}:{self.db.version()}")
+            for d in downstream:
+                if d["owner_user_id"]:
+                    self.db.notify("user", "upstream_blocked", f"{who} has not finished '{it['text']}' and marked it blocked. Your task '{d['text']}' is blocked.",
+                                   link=f"/me#{d['id']}", user_id=d["owner_user_id"], dedupe_key=f"upblocked:{item_id}:{d['id']}:{self.db.version()}")
+        elif status == "done":
+            self.db.notify("managers", "done", f"{who} completed '{it['text']}'.", link=f"/manager#row-{item_id}",
+                           dedupe_key=f"done:{item_id}:{self.db.version()}")
+            for d in downstream:
+                ready = all(by_id[u]["status"] == "done" for u in d["depends_on"] if u in by_id)
+                if ready and d["owner_user_id"]:
+                    self.db.notify("user", "unblocked", f"{who}'s '{it['text']}' is complete. You can start '{d['text']}'.",
+                                   link=f"/me#{d['id']}", user_id=d["owner_user_id"], dedupe_key=f"unblocked:{item_id}:{d['id']}")
+                    self.on_dependency_complete(it, d)
+        cascade.recompute(self.db, self.s.timezone)
+        return self.db.item(item_id) or {}
+
+    def on_dependency_complete(self, upstream: dict, downstream: dict) -> None:
+        """Hook for email trigger 3 (Block 7)."""
+
+    def read_notifications(self, me: Person) -> None:
+        self.db.mark_read(me.id, me.role == "manager")
+
     # Needs Review queue (spec 5.4)
     def resolve_item(self, me: Person, item_id: str, action: str, value: str | None) -> dict:
         if me.role != "manager":

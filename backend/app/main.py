@@ -31,6 +31,11 @@ class ResolveIn(In):
     value: str | None = Field(default=None, max_length=120)
 
 
+class StatusIn(In):
+    status: str = Field(max_length=20)
+    reason: str | None = Field(default=None, max_length=200)
+
+
 class ExtractIn(In):
     notes: str = Field(max_length=20000)
     meeting_date: dt.date
@@ -85,6 +90,15 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
         if since is not None and since == v:
             return {"changed": False, "version": v}
         return {"changed": True, **svc.state(me)}
+
+    @app.patch("/items/{item_id}/status")
+    def set_status(item_id: str, body: StatusIn, me: Person = Depends(user)):
+        return svc.update_status(me, item_id, body.status, body.reason)
+
+    @app.post("/notifications/read")
+    def read_notes(me: Person = Depends(user)):
+        svc.read_notifications(me)
+        return {"ok": True}
 
     @app.post("/items/{item_id}/resolve")
     def resolve(item_id: str, body: ResolveIn, me: Person = Depends(user)):
