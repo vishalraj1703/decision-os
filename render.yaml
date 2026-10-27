@@ -1,0 +1,30 @@
+# Render Blueprint for the Decision OS backend (FastAPI).
+# The web app is deployed separately on Vercel (root directory: web). See docs/DEPLOY.md.
+services:
+  - type: web
+    name: decision-os-api
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn app.main:create_app --factory --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: QUALCOMM_API_KEY
+        sync: false
+      - key: INTERNAL_API_TOKEN
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: QUALCOMM_MODEL
+        value: Llama-3.3-70B
+      - key: QUALCOMM_CLIENT
+        value: stream
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_OVERRIDE_TO
+        sync: false

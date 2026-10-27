@@ -4,7 +4,10 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { authOptions, BACKEND_URL } from "@/lib/auth";
 
-const ALLOWED = /^(state|extract|items\/[\w-]+\/(status|resolve)|contradictions\/[\w-]+\/resolve|meetings\/[\w-]+\/source|notifications(\/read)?|admin\/(run-check|clock|reset|seed-demo)|health|demo-notes)$/;
+// Live extraction on Qualcomm takes 10-30 s, and a sleeping free-tier backend needs ~50 s to wake.
+export const maxDuration = 120;
+
+const ALLOWED =/^(state|extract|items\/[\w-]+\/(status|resolve)|contradictions\/[\w-]+\/resolve|meetings\/[\w-]+\/source|notifications(\/read)?|admin\/(run-check|clock|reset|seed-demo)|health|demo-notes)$/;
 
 async function forward(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const session = await getServerSession(authOptions);

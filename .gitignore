@@ -8,3 +8,4 @@ node_modules/
 .next/
 .pytest_cache/
 docs/qualcomm-check.json
+deploy-secrets.txt
