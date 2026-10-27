@@ -72,6 +72,14 @@ class AIAction(_Item):
     id: str = Field(pattern=r"^a\d{1,3}$")
     task: str = Field(min_length=1, max_length=300)
     dependencies: list[str] = Field(default_factory=list)
+    # "done" only when the notes say the work is already finished; verified again in code.
+    status: Literal["open", "done"] = "open"
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def norm_status(cls, v):
+        s = str(v or "").strip().lower()
+        return "done" if s in ("done", "complete", "completed", "finished") else "open"
 
     @field_validator("id", mode="before")
     @classmethod
@@ -96,7 +104,14 @@ class AIRisk(_Item):
 
 
 class AIContradiction(AIModel):
+    # "reversal": an earlier decision was different. "disagreement": people disagree and nothing is decided.
+    kind: Literal["reversal", "disagreement"] = "reversal"
     topic: str = Field(min_length=1, max_length=120)
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def norm_kind(cls, v):
+        return "disagreement" if str(v or "").strip().lower().startswith("disagree") else "reversal"
     current: str = Field(min_length=1, max_length=200)
     previous: str = Field(min_length=1, max_length=200)
     previous_evidence: str = Field(min_length=1, max_length=600)

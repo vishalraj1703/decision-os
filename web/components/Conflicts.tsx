@@ -38,23 +38,28 @@ function Card({ c, curDate, prevDate, live }: { c: Conflict; curDate: string; pr
     catch (e) { setErr(e instanceof ApiError ? e.message : String(e)); }
     finally { setBusy(false); }
   };
-  const found = c.source !== "cross_meeting" ? "Stated in the notes themselves"
-    : live ? "Matched across meetings by Qualcomm embeddings and reranker, confirmed by the chat model"
+  const disagreement = c.source === "disagreement";
+  const found = disagreement ? "People in this meeting disagree; nothing was decided"
+    : c.source !== "cross_meeting" ? "Stated in the notes themselves"
+    : live ? "Matched across meetings by Qualcomm embeddings, confirmed by the chat model"
     : "Matched by the replay engine (no Qualcomm key)";
   return (
     <div className="list-item" id={`conflict-${c.id}`}>
       <div className="row between">
-        <div className="task-title" style={{ textTransform: "capitalize" }}>{c.topic}</div>
-        <span className={`tag ${c.status === "open" ? "tag-red" : "tag-ok"}`}>{RESOLVED[c.status]}{c.resolved_by ? ` · ${c.resolved_by}` : ""}</span>
+        <div className="row" style={{ gap: 6 }}>
+          <span className="task-title" style={{ textTransform: "capitalize" }}>{c.topic}</span>
+          <span className="tag tag-neutral">{disagreement ? "Disagreement" : "Reversal"}</span>
+        </div>
+        <span className={`tag ${c.status === "open" ? "tag-red" : "tag-ok"}`}>{disagreement && c.status === "confirmed_current" ? `Kept ${c.current}` : disagreement && c.status === "reverted" ? `Kept ${c.previous}` : RESOLVED[c.status]}{c.resolved_by ? ` · ${c.resolved_by}` : ""}</span>
       </div>
       <div className="versus">
-        <div><span className="when">This meeting · {curDate}</span><span className="what">{c.current}</span><span className="quote small">{c.current_evidence}</span></div>
-        <div className="is-old"><span className="when">Before · {prevDate}</span><span className="what">{c.previous}</span><span className="quote small">{c.previous_evidence}</span></div>
+        <div><span className="when">{disagreement ? "One view" : `This meeting · ${curDate}`}</span><span className="what">{c.current}</span><span className="quote small">{c.current_evidence}</span></div>
+        <div className={disagreement ? "" : "is-old"}><span className="when">{disagreement ? "Other view" : `Before · ${prevDate}`}</span><span className="what">{c.previous}</span><span className="quote small">{c.previous_evidence}</span></div>
       </div>
       {c.status === "open" && (
         <div className="row">
           <button className="btn btn-primary" disabled={busy} onClick={() => act("confirm_current")}>Keep {c.current}</button>
-          <button className="btn" disabled={busy} onClick={() => act("revert")}>Revert to {c.previous}</button>
+          <button className="btn" disabled={busy} onClick={() => act("revert")}>{disagreement ? `Keep ${c.previous}` : `Revert to ${c.previous}`}</button>
           <div className="spacer" />
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => act("follow_up")}>Follow-up meeting</button>
         </div>

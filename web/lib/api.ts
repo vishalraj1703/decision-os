@@ -18,7 +18,7 @@ export interface Item {
 }
 export interface Brief { id: string; text: string; owner: string | null; status: Status; overdue: boolean; deadline_date: string | null }
 export interface Conflict {
-  id: string; meeting_id: string; previous_meeting_id: string | null; source: "in_meeting" | "cross_meeting";
+  id: string; meeting_id: string; previous_meeting_id: string | null; source: "in_meeting" | "cross_meeting" | "disagreement";
   topic: string; current: string; previous: string; current_evidence: string; previous_evidence: string;
   explanation: string | null; status: "open" | "confirmed_current" | "reverted" | "follow_up"; resolved_by: string | null; created_at: string;
 }

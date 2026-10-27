@@ -78,7 +78,7 @@ class Service:
                 "severity": it.severity, "evidence_quote": it.evidence_quote, "ev_start": it.ev_start, "ev_end": it.ev_end,
                 "confidence": it.confidence, "missing_info": it.missing_info,
                 "checks": it.checks + ([] if person or not it.owner else [f"'{it.owner}' is not in the team roster."]),
-                "review_state": review,
+                "review_state": review, "status": it.status,
             })
         self._attach_embeddings(rows)
         deps = [(ids[it.ref], ids[d]) for it in out.items for d in it.dependencies if d in ids]
@@ -89,10 +89,13 @@ class Service:
             rows, deps,
         )
         for c in out.contradictions:
+            disagreement = c.kind == "disagreement"
             self.db.add_contradiction(
-                meeting_id=meeting_id, source="in_meeting", topic=c.topic, current=c.current, previous=c.previous,
+                meeting_id=meeting_id, source="disagreement" if disagreement else "in_meeting", topic=c.topic,
+                current=c.current, previous=c.previous,
                 current_evidence=c.current_evidence, previous_evidence=c.previous_evidence,
-                explanation="The notes themselves say an earlier decision was different.",
+                explanation=("People in this meeting disagree and nothing was decided." if disagreement
+                             else "The notes themselves say an earlier decision was different."),
             )
         self.after_ingest(meeting_id)
         log.info("ingested meeting=%s items=%d attempts=%d mode=%s", meeting_id, len(rows), out.attempts, self.ai.mode)
@@ -130,7 +133,7 @@ class Service:
         except Exception:  # noqa: BLE001 - conflict detection must never lose an extraction
             log.exception("conflict detection failed")
         for c in self.db.contradictions():
-            if c["meeting_id"] == meeting_id and c["source"] == "in_meeting":
+            if c["meeting_id"] == meeting_id and c["source"] in ("in_meeting", "disagreement"):
                 self.db.notify("managers", "contradiction", f"Decision conflict on {c['topic']}: '{c['current']}' now, '{c['previous']}' before.",
                                link=f"/manager#conflict-{c['id']}", dedupe_key=f"conflict-in:{c['id']}")
         cascade.recompute(self.db, self.s.timezone)

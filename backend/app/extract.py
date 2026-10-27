@@ -55,6 +55,7 @@ class CheckedItem:
     confidence: float
     missing_info: list[str]
     checks: list[str] = field(default_factory=list)
+    status: str = "not_started"
 
 
 @dataclass
@@ -64,6 +65,10 @@ class CheckedContradiction:
     previous: str
     current_evidence: str
     previous_evidence: str
+    kind: str = "reversal"
+
+
+DONE_WORDS = re.compile(r"\b(already|finished|completed|complete|done|shipped|merged|delivered|wrapped up|closed)\b", re.I)
 
 
 @dataclass
@@ -196,12 +201,29 @@ def _owner_check(owner: str, sentence: str) -> tuple[str | None, str | None]:
     return None, f"Owner '{owner}' is not named in the source sentence, so it was set to UNKNOWN."
 
 
+# Words a model may expand when copying a deadline ("tmrw" -> "tomorrow"). Each group counts as one word.
+_DATE_SYNONYMS = [
+    {"tomorrow", "tmrw", "tmr", "tomo"},
+    {"today", "tonight", "tdy"},
+    {"monday", "mon"}, {"tuesday", "tue", "tues"}, {"wednesday", "wed"}, {"thursday", "thu", "thurs"},
+    {"friday", "fri"}, {"saturday", "sat"}, {"sunday", "sun"},
+    {"eod", "end of day"}, {"asap", "as soon as possible"},
+]
+
+
+def _date_word_in(token: str, sentence: str) -> bool:
+    if word_in(token, sentence):
+        return True
+    group = next((g for g in _DATE_SYNONYMS if token.lower() in g), None)
+    return bool(group) and any(word_in(alt, sentence) for alt in group)
+
+
 def _deadline_check(deadline: str, sentence: str) -> tuple[str, str | None]:
     if deadline == UNKNOWN:
         return UNKNOWN, None
     core = deadline.split("(")[0].strip().strip(".")
     tokens = [t for t in core.replace(",", " ").split() if t.lower() not in ("by", "on", "the", "before", "due")]
-    if core and (word_in(core, sentence) or (tokens and all(word_in(t, sentence) for t in tokens))):
+    if core and (word_in(core, sentence) or (tokens and all(_date_word_in(t, sentence) for t in tokens))):
         return core, None
     if any(w in core.lower() for w in ("after", "once", "when")):
         return core, None
@@ -248,6 +270,15 @@ def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[C
             missing.append("deadline")
         if kind == "action" and dl.status == "needs_confirmation":
             missing.append("deadline_confirmation")
+        status = "not_started"
+        if kind == "action" and act.status == "done":
+            future = re.search(r"\b(will|'ll|going to|soon|later|by|tomorrow|tmrw|next|until)\b", sentence, re.I)
+            if DONE_WORDS.search(sentence) and (re.search(r"\balready\b", sentence, re.I) or not future):
+                status = "done"
+                missing = [m for m in missing if m != "deadline" and m != "deadline_confirmation"]
+                checks.append("The notes say this is already finished, so it is recorded as Done.")
+            else:
+                checks.append("Marked done by the AI, but the sentence does not say it is finished, so it stays open.")
         if kind == "action":
             ref = act.id
         else:
@@ -257,7 +288,7 @@ def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[C
             kind=kind, ref=ref, text=text, owner=owner, deadline_raw=deadline_raw, deadline=dl,
             dependencies=deps, severity=getattr(it, "severity", None) if kind == "risk" else None,
             evidence_quote=notes[s:e], ev_start=ss, ev_end=se, confidence=it.confidence,
-            missing_info=missing, checks=checks,
+            missing_info=missing, checks=checks, status=status,
         ))
 
     # Dependencies must point at real actions of this meeting; no self-links.
@@ -272,7 +303,10 @@ def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[C
     for c in ext.contradictions:
         cur, prev = locate(c.current_evidence, notes), locate(c.previous_evidence, notes)
         if cur and prev:
-            contradictions.append(CheckedContradiction(c.topic, c.current, c.previous, notes[cur[0]:cur[1]], notes[prev[0]:prev[1]]))
+            if c.kind == "disagreement" and cur == prev and c.current.strip().lower() == c.previous.strip().lower():
+                continue  # not a real disagreement
+            contradictions.append(CheckedContradiction(c.topic, c.current, c.previous, notes[cur[0]:cur[1]],
+                                                       notes[prev[0]:prev[1]], c.kind))
         else:
             rejected.append({"kind": "contradiction", "text": c.topic, "reason": "Quoted sentences not found in the notes."})
     return items, contradictions, rejected

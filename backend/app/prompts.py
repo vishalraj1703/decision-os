@@ -15,7 +15,9 @@ Rules:
 - A concern, a missing approval or anything that could block work is a risk ("the finance team hasn't approved the budget").
 - If one task starts after another ("Priya will test it once Raj finishes"), put the id of the earlier action in dependencies and use the wording ("once Raj finishes") as the deadline.
 - Do not create tasks for things the notes say not to do.
-- If the notes say an earlier decision was different (e.g. "last week we agreed X"), add a contradiction.
+- If the notes say an earlier decision was different (e.g. "last week we agreed X"), add a contradiction with kind "reversal".
+- If people disagree in the meeting and nothing is decided ("Sam says Nov 10, Leena says Nov 12"), add a contradiction with kind "disagreement": current = one view, previous = the other view, each with its own quote.
+- Work the notes say is already finished ("Ravi already finished the review") is an action with status "done". All other actions have status "open".
 - Each evidence_quote must be the one sentence that states that item, not a neighbouring sentence.
 - severity is "high", "medium", "low", or "UNKNOWN" if not stated.
 - confidence is your own 0-1 estimate; it is shown to users as self-reported.
@@ -26,10 +28,11 @@ SCHEMA_EXAMPLE = {
     "decisions": [{"decision": "...", "owner": "name or UNKNOWN", "deadline": "wording or UNKNOWN",
                    "evidence_quote": "exact sentence", "confidence": 0.9, "missing_info": ["owner"]}],
     "actions": [{"id": "a1", "task": "...", "owner": "name or UNKNOWN", "deadline": "wording or UNKNOWN",
-                 "dependencies": [], "evidence_quote": "exact sentence", "confidence": 0.9, "missing_info": []}],
+                 "dependencies": [], "status": "open or done", "evidence_quote": "exact sentence", "confidence": 0.9,
+                 "missing_info": []}],
     "risks": [{"risk": "...", "owner": "name or UNKNOWN", "deadline": "wording or UNKNOWN", "severity": "high",
                "evidence_quote": "exact sentence", "confidence": 0.8, "missing_info": ["owner", "deadline"]}],
-    "contradictions": [{"topic": "...", "current": "...", "previous": "...",
+    "contradictions": [{"kind": "reversal or disagreement", "topic": "...", "current": "...", "previous": "...",
                         "previous_evidence": "exact sentence", "current_evidence": "exact sentence"}],
 }
 
