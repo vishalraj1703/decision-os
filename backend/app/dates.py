@@ -83,7 +83,7 @@ def normalize(raw: str | None, meeting_date: dt.date) -> Deadline:
         return Deadline(meeting_date, "exact", "'today' = the meeting date.")
     if re.search(r"\bday after tomorrow\b", text):
         return Deadline(meeting_date + dt.timedelta(days=2), "exact", "Two days after the meeting.")
-    if re.search(r"\btomorrow\b", text):
+    if re.search(r"\b(tomorrow|tmrw|tmr|tomo)\b", text):
         return Deadline(meeting_date + dt.timedelta(days=1), "exact", "'tomorrow' = the day after the meeting.")
 
     m = re.search(r"\bnext\s+(" + _WD + r")\b", text)
