@@ -17,7 +17,7 @@ export default function Conflicts({ items, meetings, live }: { items: Conflict[]
         <h2>Decision conflicts</h2>
         {open > 0 && <span className="tag tag-red">{open} open</span>}
         <div className="spacer" />
-        <span className="tiny muted">Decisions that reverse an earlier one</span>
+        <span className="tiny muted">Reversed decisions and open disagreements</span>
       </div>
       {items.length === 0 ? <div className="empty">No contradictions between meetings.</div> : (
         <div className="list">
