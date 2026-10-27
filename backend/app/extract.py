@@ -229,7 +229,7 @@ def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[C
             checks.append(why)
         if owner and kind == "risk" and re.search(
                 r"\b" + re.escape(owner.split()[0]) + r"\s+(said|says|mentioned|thinks|thought|reported|raised|noted|flagged|"
-                r"warned|is worried|was worried|worries|is concerned|feels)\b", sentence, re.I):
+                r"warned|worried|is worried|was worried|worries|is concerned|concerned|feels)\b", sentence, re.I):
             checks.append(f"{owner} reported this risk; reporting it does not make them the owner, so the owner is UNKNOWN.")
             owner = None
         deadline_raw, why = _deadline_check(it.deadline, sentence)
