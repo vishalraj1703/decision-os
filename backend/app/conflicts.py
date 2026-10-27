@@ -3,7 +3,8 @@
 1. Embeddings (BAAI/bge-large-en-v1.5): each decision is stored as a vector, so a new
    decision finds earlier ones with the same meaning even when worded differently
    ("Cloud provider" vs "Hosting choice"), instead of relying on an exact topic string.
-2. Reranker (BAAI/bge-reranker-base): orders the closest earlier decisions.
+2. Reranker (optional, QUALCOMM_RERANKER_MODEL; not available on every account): orders candidates.
+   Without it, embedding similarity order is used.
 3. Chat (Llama-3.1-8B): confirms whether the pair is a real reversal, not just related.
 
 Only pairs the chat model confirms become conflict cards, with both evidence quotes.

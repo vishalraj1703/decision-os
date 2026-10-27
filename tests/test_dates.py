@@ -29,3 +29,10 @@ def test_unknown_and_dependency():
 
 def test_year_rollover():
     assert normalize("Jan 5", dt.date(2026, 12, 28)).date == dt.date(2027, 1, 5)
+
+
+def test_dependency_wording_with_a_date_keeps_the_date():
+    r = normalize("once Ravi approves the API contract, by Oct 28", MON)
+    assert r.date == dt.date(2026, 10, 28) and r.status == "exact"
+    assert normalize("after Asha finishes, by Oct 29", MON).date == dt.date(2026, 10, 29)
+    assert normalize("after Asha finishes", MON).status == "after_dependency"

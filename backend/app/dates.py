@@ -52,7 +52,13 @@ def normalize(raw: str | None, meeting_date: dt.date) -> Deadline:
     text = re.sub(r"\b(eod|cob|end of day|close of business|morning|evening|afternoon)\b", " ", text)
     text = re.sub(r"\s+", " ", text).strip(" ,.-")
 
-    if re.search(r"\b(after|once|when|following)\b", text):
+    # "once Ravi approves, by Oct 28" has both a dependency and a date: the date wins.
+    # Only wording with no date at all ("after Asha finishes") becomes after_dependency.
+    after = bool(re.search(r"\b(after|once|when|following)\b", text))
+    if after:
+        result = normalize(re.sub(r"\b(after|once|when|following)\b.*?(,|$)", " ", text), meeting_date)
+        if result.date is not None:
+            return result
         return Deadline(None, "after_dependency", "Starts after its dependency; no date of its own.")
 
     m = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", text)

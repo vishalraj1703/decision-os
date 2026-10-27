@@ -93,8 +93,74 @@ class Qualcomm:
 
     def chat(self, messages: list[dict], *, max_tokens: int | None = None, temperature: float = 0.1,
              tool: dict | None = None, client: str | None = None) -> ChatResult:
-        """One chat completion. `tool` is an OpenAI-style function spec the model is asked to call."""
+        """One chat completion.
+
+        Default path is streaming ("stream"). Verified against the live Playground on
+        2026-10-27: a NON-streaming reply whose text looks like JSON is converted by the
+        server into an empty tool call (content "", arguments "{}"), so the answer is lost.
+        Streaming returns the generated text intact.
+        """
         which = client or self.s.qualcomm_client
+        if which in ("stream", "imagine") and tool is None:
+            return self._chat_stream(messages, max_tokens=max_tokens, temperature=temperature)
+        return self._chat_once(messages, max_tokens=max_tokens, temperature=temperature, tool=tool, which=which)
+
+    def _chat_stream(self, messages: list[dict], *, max_tokens: int | None, temperature: float) -> ChatResult:
+        import httpx
+
+        url = self.s.qualcomm_endpoint.rstrip("/") + "/chat/completions"
+        body = {"model": self.s.qualcomm_model, "messages": messages, "stream": True,
+                "temperature": temperature, "max_tokens": max_tokens or self.s.max_tokens}
+        headers = {"Authorization": f"Bearer {self.s.qualcomm_api_key}", "Accept": "text/event-stream"}
+        timeout = httpx.Timeout(self.s.call_timeout_s, connect=10.0)
+        t0 = time.perf_counter()
+        parts: list[str] = []
+        finish = None
+        usage: dict = {}
+        model = self.s.qualcomm_model
+        try:
+            with httpx.stream("POST", url, json=body, headers=headers, timeout=timeout, verify=True) as resp:
+                if resp.status_code != 200:
+                    detail = resp.read().decode("utf-8", "replace")[:200]
+                    if resp.status_code in (401, 403) or "api key" in detail.lower() or "authorization" in detail.lower():
+                        raise QualcommError("AUTH", "Qualcomm rejected the API key. Check QUALCOMM_API_KEY.", False)
+                    if resp.status_code == 429:
+                        raise QualcommError("RATE_LIMITED", "Qualcomm is rate limiting requests. Retry shortly.", True)
+                    raise QualcommError("UPSTREAM", f"Qualcomm returned HTTP {resp.status_code}.", resp.status_code >= 500)
+                for line in resp.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(payload)
+                    except ValueError:
+                        continue
+                    model = chunk.get("model") or model
+                    if chunk.get("usage"):
+                        usage = chunk["usage"]
+                    for ch in chunk.get("choices") or []:
+                        delta = ch.get("delta") or {}
+                        if delta.get("content"):
+                            parts.append(delta["content"])
+                        if ch.get("finish_reason"):
+                            finish = ch["finish_reason"]
+        except QualcommError:
+            raise
+        except Exception as e:  # noqa: BLE001 - httpx raises several exception types
+            err = _classify(e)
+            log.warning("qualcomm stream failed code=%s type=%s", err.code, type(e).__name__)
+            raise err from None
+        return ChatResult(
+            text="".join(parts), tool_arguments=None, model=model,
+            latency_ms=int((time.perf_counter() - t0) * 1000), finish_reason=finish,
+            prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"),
+        )
+
+    def _chat_once(self, messages: list[dict], *, max_tokens: int | None, temperature: float,
+                   tool: dict | None, which: str) -> ChatResult:
+        t0 = time.perf_counter()
         t0 = time.perf_counter()
         try:
             if which == "openai":
@@ -152,6 +218,8 @@ class Qualcomm:
         return [d.embedding for d in sorted(r.data, key=lambda d: d.index)]
 
     def rerank(self, query: str, documents: list[str], top_n: int = 3) -> list[tuple[int, float]]:
+        if not self.s.reranker_model:
+            raise QualcommError("NO_RERANKER", "No reranker model configured.", False)
         try:
             r = self._imagine_client().reranker(query, documents, model=self.s.reranker_model, top_n=top_n)
         except Exception as e:  # noqa: BLE001

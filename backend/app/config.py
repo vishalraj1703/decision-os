@@ -20,18 +20,18 @@ class Settings:
     qualcomm_endpoint: str = field(
         default_factory=lambda: os.environ.get("QUALCOMM_ENDPOINT", "https://aisuite.cirrascale.com/apis/v2").strip()
     )
-    qualcomm_model: str = field(default_factory=lambda: os.environ.get("QUALCOMM_MODEL", "Llama-3.1-8B").strip())
+    qualcomm_model: str = field(default_factory=lambda: os.environ.get("QUALCOMM_MODEL", "Llama-3.3-70B").strip())
     embedding_model: str = field(
         default_factory=lambda: os.environ.get("QUALCOMM_EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5").strip()
     )
     reranker_model: str = field(
-        default_factory=lambda: os.environ.get("QUALCOMM_RERANKER_MODEL", "BAAI/bge-reranker-base").strip()
+        default_factory=lambda: os.environ.get("QUALCOMM_RERANKER_MODEL", "").strip()
     )
-    # "imagine" (python-imagine-sdk) or "openai" (OpenAI SDK against the same base URL).
-    qualcomm_client: str = field(default_factory=lambda: os.environ.get("QUALCOMM_CLIENT", "imagine").strip())
+    # "stream" (default; required: non-streaming JSON replies are lost by the server), "imagine" or "openai".
+    qualcomm_client: str = field(default_factory=lambda: os.environ.get("QUALCOMM_CLIENT", "stream").strip())
     # "json" (prompt asks for JSON) or "tool" (schema passed as a function the model must call).
     structured_mode: str = field(default_factory=lambda: os.environ.get("QUALCOMM_STRUCTURED_MODE", "json").strip())
-    call_timeout_s: float = field(default_factory=lambda: float(os.environ.get("QUALCOMM_TIMEOUT_S", "30")))
+    call_timeout_s: float = field(default_factory=lambda: float(os.environ.get("QUALCOMM_TIMEOUT_S", "45")))
     max_tokens: int = field(default_factory=lambda: int(os.environ.get("QUALCOMM_MAX_TOKENS", "2500")))
 
     db_path: Path = field(default_factory=lambda: Path(os.environ.get("DECISIONOS_DB", str(ROOT / "data" / "decisionos.db"))))

@@ -34,7 +34,7 @@ In a second window:
 ```
 .\.venv\Scripts\python scripts\demo_seed.py
 ```
-This saves the real Qualcomm replies for both demo meetings into `fixtures\replay\`. If the Wi-Fi fails at the venue, start with `$env:QUALCOMM_REPLAY="1"` and the app replays them. The badge then reads "Replay mode", so say so out loud.
+This saves the real Qualcomm replies for both demo meetings into `data\recorded\` (not committed to git, because it holds your real notes). If the Wi-Fi fails at the venue, start with `$env:QUALCOMM_REPLAY="1"` and the app replays them. The badge then reads "Replay mode", so say so out loud.
 
 ## 5. Normal start
 Close the recording backend, then run:

@@ -149,9 +149,7 @@ def apply_env(values: dict) -> None:
             lines[i] = f"{key}={values[key]}"
             done.add(key)
     lines += [f"{k}={v}" for k, v in values.items() if k not in done]
-    env.write_text("
-".join(lines) + "
-", encoding="utf-8")
+    env.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

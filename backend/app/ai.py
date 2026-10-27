@@ -19,10 +19,11 @@ import re
 from pathlib import Path
 
 from .config import ROOT, Settings
-from .prompts import CALLOUT_SYSTEM, CONFLICT_SYSTEM, EXTRACTION_SYSTEM
+from .prompts import CALLOUT_SYSTEM, CONFLICT_SYSTEM, EXTRACTION_SYSTEM, notes_from_messages
 from .qualcomm import ChatResult, Qualcomm, QualcommError
 
-REPLAY_DIR = ROOT / "fixtures" / "replay"
+REPLAY_DIR = ROOT / "fixtures" / "replay"          # hand-written dev replies (used by tests)
+RECORDED_DIR = ROOT / "data" / "recorded"          # real Qualcomm replies, saved with QUALCOMM_RECORD=1
 
 
 def notes_key(notes: str) -> str:
@@ -34,10 +35,7 @@ _STOP = {"the", "and", "for", "with", "our", "use", "will", "this", "that", "fro
 
 
 def _notes_from(messages: list[dict]) -> str:
-    try:
-        return json.loads(messages[1]["content"])["notes"]
-    except (KeyError, IndexError, ValueError, TypeError):
-        return ""
+    return notes_from_messages(messages)
 
 
 def _hash_vec(text: str, dims: int = 256) -> list[float]:
@@ -55,14 +53,16 @@ class ReplayAI:
     mode = "replay"
     model = "replay (dev)"
 
-    def __init__(self, s: Settings):
+    def __init__(self, s: Settings, prefer_recorded: bool = False):
         self.s = s
+        self.prefer_recorded = prefer_recorded
 
     def chat(self, messages: list[dict], **_: object) -> ChatResult:
         system = messages[0]["content"]
         if system == EXTRACTION_SYSTEM:
             notes = _notes_from(messages)
-            path = REPLAY_DIR / f"extract-{notes_key(notes)}.json"
+            name = f"extract-{notes_key(notes)}.json"
+            path = RECORDED_DIR / name if self.prefer_recorded and (RECORDED_DIR / name).exists() else REPLAY_DIR / name
             if not path.exists():
                 raise QualcommError("NO_REPLAY", "Replay mode only knows the bundled demo meetings. Add QUALCOMM_API_KEY for live extraction.", False)
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -118,9 +118,9 @@ class LiveAI:
             raise
         self.last_error = None
         if self.record and messages[0]["content"] == EXTRACTION_SYSTEM and r.text:
-            REPLAY_DIR.mkdir(parents=True, exist_ok=True)
+            RECORDED_DIR.mkdir(parents=True, exist_ok=True)
             notes = _notes_from(messages)
-            (REPLAY_DIR / f"extract-{notes_key(notes)}.json").write_text(
+            (RECORDED_DIR / f"extract-{notes_key(notes)}.json").write_text(
                 json.dumps({"source": "recorded live Qualcomm reply", "model": r.model, "reply": r.text}, indent=1), encoding="utf-8")
         return r
 
@@ -136,6 +136,8 @@ class LiveAI:
 
 
 def build_ai(s: Settings):
-    if os.environ.get("QUALCOMM_REPLAY", "").lower() in ("1", "true", "yes") or not s.qualcomm_api_key:
+    if os.environ.get("QUALCOMM_REPLAY", "").lower() in ("1", "true", "yes"):
+        return ReplayAI(s, prefer_recorded=True)  # offline fallback: real recordings first
+    if not s.qualcomm_api_key:
         return ReplayAI(s)
     return LiveAI(s)

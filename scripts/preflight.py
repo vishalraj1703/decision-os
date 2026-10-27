@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.ai import REPLAY_DIR, notes_key  # noqa: E402
+from app.ai import RECORDED_DIR, notes_key  # noqa: E402
 from app.config import settings  # noqa: E402
 
 results: list[tuple[str, str, str]] = []
@@ -93,7 +93,7 @@ def main() -> int:
     # Offline fallback
     recorded = []
     for name in ("demo_meeting_0", "demo_meeting_1"):
-        p = REPLAY_DIR / f"extract-{notes_key((ROOT / 'fixtures' / f'{name}.txt').read_text(encoding='utf-8'))}.json"
+        p = RECORDED_DIR / f"extract-{notes_key((ROOT / 'fixtures' / f'{name}.txt').read_text(encoding='utf-8'))}.json"
         if p.exists():
             recorded.append(json.loads(p.read_text(encoding="utf-8")).get("source", ""))
     live_rec = [r for r in recorded if "recorded live" in r]

@@ -70,3 +70,14 @@ def test_owner_with_role_annotation(settings_, db):
 def test_reply_that_is_not_json_at_all_retries_then_fails_cleanly(settings_, db):
     _, r, ai = ingest(settings_, db, "I could not find any action items in these notes.")
     assert r.status_code == 502 and ai.calls == 2 and r.json()["code"] == "INVALID_AI_RESPONSE"
+
+
+def test_risk_reporter_is_not_owner(settings_, db):
+    notes = "Ops sync. Ravi said the push notification server might not be ready in time."
+    reply = {"meeting_topic": "Ops", "actions": [], "decisions": [], "contradictions": [], "risks": [
+        {"risk": "Push server may be late", "owner": "Ravi", "deadline": "UNKNOWN", "severity": "medium",
+         "evidence_quote": "Ravi said the push notification server might not be ready in time.", "confidence": 0.8, "missing_info": []}]}
+    c = make_client(settings_, db, ScriptedAI(settings_, [reply]))
+    c.post("/extract", json={"notes": notes, "meeting_date": "2026-10-26"}, headers=MANAGER)
+    r = c.get("/state", headers=MANAGER).json()["risks"][0]
+    assert r["owner"] is None and "owner" in r["missing_info"] and any("reported this risk" in x for x in r["checks"])
