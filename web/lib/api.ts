@@ -13,7 +13,7 @@ export interface Item {
   missing_info: string[]; checks: string[]; status: Status; blocked_reason: string | null;
   review_state: "ok" | "needs_review" | "follow_up" | "discarded" | "superseded";
   overdue: boolean; at_risk: boolean; depends_on: string[]; color: Color;
-  verification: Verification | null;
+  verification: Verification | null; evidence_hash: string | null;
   slack?: { days: number; source: "auto" | "manual" | "none"; why: string };
   clarify?: ClarifyDraft[]; clarify_sent?: { flag: string; to: string; at: string }[];
   meeting: { id: string; topic: string; date: string };
@@ -36,6 +36,14 @@ export interface WhatIfStep {
   teams_affected: number; unteamed: number; days_at_risk: number; sentence: string;
 }
 export interface WhatIf { origin: string; slack: Record<string, { days: number; source: string; why: string }>; steps: WhatIfStep[] }
+export interface AccuracyLayer { label: string; predicted: number; gold: number; matched: number; hallucinations: number; owners_lost: number;
+  precision: number | null; recall: number | null; hallucination_rate: number | null }
+export interface Accuracy {
+  measured_at: string; model: string; notes: number; gold_items: number; failed_notes: string[];
+  layers: { pass1: AccuracyLayer; code: AccuracyLayer; full: AccuracyLayer };
+  caught: { note: string; type: string; text: string; why: string }[]; caught_total: number; remaining: number;
+  lost?: { note: string; text: string; why: string }[]; lost_total?: number;
+}
 export interface Brief { id: string; text: string; owner: string | null; status: Status; overdue: boolean; deadline_date: string | null }
 export interface Conflict {
   id: string; meeting_id: string; previous_meeting_id: string | null; source: "in_meeting" | "cross_meeting" | "disagreement";
@@ -62,7 +70,7 @@ export interface ManagerState extends BaseState {
   graph: { nodes: Item[]; edges: { source: string; target: string; blocked: boolean }[] };
   actions: Item[]; decisions: Item[]; risks: Item[]; needs_review: Item[]; conflicts: Conflict[];
   teams: { team: string; color: Color; label: string; tasks: number }[];
-  meetings: Meeting[]; emails: Email[]; ai_calls: AICall[]; health: Health | null;
+  meetings: Meeting[]; emails: Email[]; ai_calls: AICall[]; health: Health | null; accuracy: Accuracy | null;
 }
 export interface EmployeeState extends BaseState { tasks: Item[] }
 

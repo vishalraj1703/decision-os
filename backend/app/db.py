@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import sqlite3
 import threading
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS items (
     missing_info TEXT NOT NULL DEFAULT '[]', checks TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'not_started', blocked_reason TEXT,
     review_state TEXT NOT NULL DEFAULT 'ok', overdue INTEGER NOT NULL DEFAULT 0, at_risk INTEGER NOT NULL DEFAULT 0,
-    embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, verification TEXT, slack_days INTEGER
+    embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, verification TEXT, slack_days INTEGER, evidence_hash TEXT
 );
 CREATE TABLE IF NOT EXISTS dependencies (
     item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
@@ -62,8 +63,13 @@ CREATE TABLE IF NOT EXISTS ai_calls (
 # Columns added after the first deployment; older databases get them on start-up.
 MIGRATIONS = [
     ("meetings", "replay_json", "TEXT"), ("meetings", "verify_json", "TEXT"), ("meetings", "redactions_json", "TEXT"),
-    ("items", "verification", "TEXT"), ("items", "slack_days", "INTEGER"),
+    ("items", "verification", "TEXT"), ("items", "slack_days", "INTEGER"), ("items", "evidence_hash", "TEXT"),
 ]
+
+
+def evidence_hash(quote: str) -> str:
+    """Fingerprint of an evidence quote: shows later that the quote was not altered."""
+    return hashlib.sha256(" ".join(quote.split()).encode("utf-8")).hexdigest()[:16]
 
 
 def now() -> dt.datetime:
@@ -324,17 +330,38 @@ class DB:
                 c.execute(
                     "INSERT INTO items (id, meeting_id, kind, ref, text, owner, owner_user_id, team, deadline_raw, deadline_date, "
                     "deadline_status, deadline_note, severity, evidence_quote, ev_start, ev_end, confidence, missing_info, checks, "
-                    "status, review_state, embedding, verification, created_at, updated_at) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "status, review_state, embedding, verification, evidence_hash, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (it["id"], meeting["id"], it["kind"], it["ref"], it["text"], it.get("owner"), it.get("owner_user_id"),
                      it.get("team"), it.get("deadline_raw"), it.get("deadline_date"), it.get("deadline_status"), it.get("deadline_note"),
                      it.get("severity"), it["evidence_quote"], it.get("ev_start"), it.get("ev_end"), it.get("confidence"),
                      json.dumps(it.get("missing_info", [])), json.dumps(it.get("checks", [])), it.get("status", "not_started"),
                      it.get("review_state", "ok"), json.dumps(it["embedding"]) if it.get("embedding") else None,
-                     json.dumps(it["verification"]) if it.get("verification") else None, ts, ts),
+                     json.dumps(it["verification"]) if it.get("verification") else None, evidence_hash(it["evidence_quote"]), ts, ts),
                 )
             for a, b in deps:
                 c.execute("INSERT OR IGNORE INTO dependencies VALUES (?,?)", (a, b))
+
+    def purge_meeting(self, meeting_id: str) -> dict | None:
+        """Delete a meeting and everything derived from it: items, conflicts on either side,
+        questions, notifications and emails about its items. The AI call log keeps its rows
+        (they hold no text)."""
+        with self.tx(bump=True) as c:
+            if c.execute("SELECT 1 FROM meetings WHERE id=?", (meeting_id,)).fetchone() is None:
+                return None
+            items = [r[0] for r in c.execute("SELECT id FROM items WHERE meeting_id=?", (meeting_id,))]
+            marks = ",".join("?" * len(items)) or "''"
+            conflicts = [r[0] for r in c.execute(
+                f"SELECT id FROM contradictions WHERE meeting_id=? OR previous_meeting_id=? "
+                f"OR current_item_id IN ({marks}) OR previous_item_id IN ({marks})", (meeting_id, meeting_id, *items, *items))]
+            notes = 0
+            for ref in items + conflicts:
+                notes += c.execute("DELETE FROM notifications WHERE link LIKE ?", (f"%{ref}%",)).rowcount
+            emails = c.execute(f"DELETE FROM emails WHERE item_id IN ({marks})", items).rowcount if items else 0
+            if conflicts:
+                c.execute(f"DELETE FROM contradictions WHERE id IN ({','.join('?' * len(conflicts))})", conflicts)
+            c.execute("DELETE FROM meetings WHERE id=?", (meeting_id,))
+        return {"items": len(items), "conflicts": len(conflicts), "notifications": notes, "emails": emails}
 
     def add_dependency(self, item_id: str, depends_on: str) -> None:
         with self.tx(bump=True) as c:

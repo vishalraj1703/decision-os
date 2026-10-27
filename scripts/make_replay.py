@@ -54,6 +54,10 @@ M1 = {
         {"id": "a3", "task": "Follow up with finance on the hosting budget", "owner": "Raj", "deadline": "UNKNOWN",
          "dependencies": [], "evidence_quote": "Someone needs to follow up with finance.", "confidence": 0.6,
          "missing_info": ["deadline"]},
+        # A suggestion the model turns into a task; the Verifier removes it.
+        {"id": "a4", "task": "Book offsite venue for the launch party", "owner": "Arun", "deadline": "UNKNOWN",
+         "dependencies": [], "evidence_quote": "Maybe Arun could look at offsite venues for the launch party.",
+         "confidence": 0.5, "missing_info": ["deadline"]},
     ],
     "risks": [
         {"risk": "Hosting budget not approved", "owner": "UNKNOWN", "deadline": "UNKNOWN", "severity": "high",

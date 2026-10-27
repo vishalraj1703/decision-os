@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api, fmtDate, Item, ManagerState, Meeting, useLiveState } from "@/lib/api";
+import { api, ApiError, fmtDate, Item, ManagerState, Meeting, useLiveState } from "@/lib/api";
 import Conflicts from "./Conflicts";
 import DemoControls from "./DemoControls";
 import Flowchart, { Legend } from "./Flowchart";
 import Icon from "./Icon";
 import { ActionTable, Callout, Metrics, NeedsReview, NewMeeting, TeamStatus } from "./Panels";
 import { Bell, EnginePill, NavLink, SimPill, Sidebar, SourceSheet, UserMenu } from "./Shell";
-import { AICallLog, SelfCheck, SelfCheckSummary, TrustReceipt } from "./Trust";
+import { AICallLog, Scoreboard, SelfCheck, SelfCheckSummary, TrustReceipt } from "./Trust";
 import { HealthSheet, HealthTile, Preview, WhatIfPanel } from "./Explain";
 
 type Person = { name: string; email: string; team: string; role: string };
@@ -29,6 +29,13 @@ export default function ManagerDashboard() {
     api<Demo[]>("demo-notes").then(setDemos).catch(() => setDemos([]));
   }, []);
   const openSource = useCallback((i: Item) => setSource(i), []);
+  const [purgeErr, setPurgeErr] = useState<string | null>(null);
+  const purge = async (m: Meeting) => {
+    if (!window.confirm(`Delete “${m.topic}” (${fmtDate(m.meeting_date)}) for good?\n\nIts notes, tasks, decisions, risks, conflicts, questions and notifications are removed. This cannot be undone.`)) return;
+    setPurgeErr(null);
+    try { await api(`meetings/${m.id}`, "DELETE"); }
+    catch (e) { setPurgeErr(e instanceof ApiError ? e.message : String(e)); }
+  };
 
   if (!state) {
     return <div className="content">{error ? <div className="alert alert-error">{error}</div> : <div className="row muted"><span className="spinner dark" />Loading…</div>}</div>;
@@ -48,6 +55,7 @@ export default function ManagerDashboard() {
           <NavLink href="#actions" icon="list" label="Action items" count={s.actions.length} />
           <NavLink href="#decisions" icon="checkCircle" label="Decisions & risks" />
           <NavLink href="#meetings" icon="file" label="Meetings" count={s.meetings.length} />
+          <NavLink href="#accuracy" icon="checkCircle" label="Accuracy" />
           <NavLink href="#ai-log" icon="sparkle" label="AI call log" />
           <NavLink href="#deadlines" icon="clock" label="Deadline check" />
         </nav>
@@ -134,7 +142,7 @@ export default function ManagerDashboard() {
               <button className="btn btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={13} />Add</button></div>
             {s.meetings.length === 0 ? <div className="empty">No meetings yet. Add notes to get started.</div> : (
               <table className="table">
-                <thead><tr><th>Meeting</th><th>Date</th><th>Engine</th><th>Model calls</th><th>Self-check</th></tr></thead>
+                <thead><tr><th>Meeting</th><th>Date</th><th>Engine</th><th>Model calls</th><th>Self-check</th><th><span className="sr-only">Delete</span></th></tr></thead>
                 <tbody>{[...s.meetings].reverse().map((m) => (
                   <tr key={m.id}>
                     <td className="task-title">{m.topic}</td>
@@ -142,11 +150,16 @@ export default function ManagerDashboard() {
                     <td className="mono">{m.model}</td>
                     <td className="num">{m.attempts + (m.verify.attempts ?? 0)}</td>
                     <td><SelfCheckSummary m={m} onOpen={() => setCheck(m)} /></td>
+                    <td style={{ textAlign: "right" }}><button className="btn btn-ghost btn-sm" onClick={() => purge(m)} aria-label={`Delete ${m.topic}`}>Delete</button></td>
                   </tr>
                 ))}</tbody>
               </table>
             )}
+            {purgeErr && <div className="alert alert-error" style={{ margin: 12 }}>{purgeErr}</div>}
+            <div className="card-foot">Delete removes a meeting and everything taken from it. The AI call log keeps its rows, which hold no notes.</div>
           </div>
+
+          <Scoreboard a={s.accuracy} />
 
           <AICallLog calls={s.ai_calls} meetings={s.meetings} />
 

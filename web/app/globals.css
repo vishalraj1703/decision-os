@@ -149,6 +149,9 @@ p { margin: 0; }
 .whatif-out.is-amber { background: var(--amber-soft); border-color: var(--amber-line); }
 .whatif-out .table { background: var(--surface); border-radius: 6px; }
 .node-whatif { transition: border-color .15s, box-shadow .15s; }
+.score-table th.is-ours, .score-table td.is-ours { background: var(--accent-soft); }
+.score-table th.is-ours { color: var(--accent); }
+.score-table td.num { font-size: 15px; }
 .clarify { display: flex; flex-direction: column; gap: 8px; }
 .draft { border: 1px dashed var(--line-strong); border-radius: 8px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; background: var(--surface-2); }
 .draft .textarea { min-height: 0; font-size: 13px; }

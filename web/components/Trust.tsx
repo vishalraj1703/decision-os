@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AICall, fmtDate, Item, Meeting, ReplayRow } from "@/lib/api";
+import { Accuracy, AICall, fmtDate, Item, Meeting, ReplayRow } from "@/lib/api";
 import Icon from "./Icon";
 
 /** Quote found in the notes, meaning confirmed by the Verifier, and the model's own confidence. */
@@ -14,6 +14,7 @@ export function TrustReceipt({ i }: { i: Item }) {
     meaning === "ok" ? `Meaning verified: the Verifier (${v?.by ?? "model"}) re-read the notes and confirmed this item.`
       : `Meaning not checked: ${v?.note ?? "this item was not verified."}`,
     `Confidence ${pct}%: self-reported by the model, not a measured accuracy.`,
+    ...(i.evidence_hash ? [`Evidence fingerprint: ${i.evidence_hash}`] : []),
   ].join("\n");
   return (
     <span className="receipt" title={title} aria-label={title}>
@@ -165,6 +166,65 @@ export function AICallLog({ calls, meetings }: { calls: AICall[]; meetings: Meet
             ))}</tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+function pctText(v: number | null | undefined) {
+  return v == null ? "–" : `${Math.round(v * 100)}%`;
+}
+
+/** Recorded run of the 10-note gold set: one prompt vs the full pipeline. Read-only. */
+export function Scoreboard({ a }: { a: Accuracy | null }) {
+  const order: [keyof Accuracy["layers"], string][] = [["pass1", "Pass 1 alone"], ["code", "+ code checks"], ["full", "+ Verifier"]];
+  return (
+    <div className="card" id="accuracy">
+      <div className="card-head">
+        <h2>Accuracy scoreboard</h2>
+        <span className="sub">{a ? `${a.notes} hand-labelled notes · ${a.gold_items} answers` : "gold set"}</span>
+      </div>
+      {!a ? (
+        <div className="empty">Not measured yet. Run <span className="mono">scripts/eval_gold.py</span> with a Qualcomm key to record the numbers.</div>
+      ) : (
+        <>
+          <div style={{ overflowX: "auto" }}>
+            <table className="table score-table">
+              <thead><tr><th>Measured on the gold set</th>{order.map(([k, l]) => <th key={k} className={k === "full" ? "is-ours" : ""}>{l}</th>)}</tr></thead>
+              <tbody>
+                <tr><td>Precision <div className="tiny muted">extracted items that are right</div></td>
+                  {order.map(([k]) => <td key={k} className={`num ${k === "full" ? "is-ours" : ""}`}>{pctText(a.layers[k].precision)}</td>)}</tr>
+                <tr><td>Recall <div className="tiny muted">answers that were found</div></td>
+                  {order.map(([k]) => <td key={k} className={`num ${k === "full" ? "is-ours" : ""}`}>{pctText(a.layers[k].recall)}</td>)}</tr>
+                <tr><td>Hallucinations <div className="tiny muted">invented items, owners or dates</div></td>
+                  {order.map(([k]) => <td key={k} className={`num ${k === "full" ? "is-ours" : ""}`}><b>{a.layers[k].hallucinations}</b>
+                    <span className="tiny muted"> ({pctText(a.layers[k].hallucination_rate)})</span></td>)}</tr>
+              </tbody>
+            </table>
+          </div>
+          {a.caught.length > 0 && (
+            <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>Caught by the checks ({a.caught_total})</div>
+              {a.caught.map((c, n) => (
+                <div key={n} className="why"><Icon name="check" size={13} /><span><b>{c.text}</b> · {c.why} <span className="faint">({c.note})</span></span></div>
+              ))}
+            </div>
+          )}
+          {(a.lost?.length ?? 0) > 0 && (
+            <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 0 }}>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>Right answers the Verifier removed ({a.lost_total})</div>
+              {a.lost!.map((c, n) => (
+                <div key={n} className="why"><Icon name="x" size={13} /><span><b>{c.text}</b> · {c.why} <span className="faint">({c.note})</span></span></div>
+              ))}
+            </div>
+          )}
+          <div className="card-foot">
+            Recorded run with {a.model} on {new Date(a.measured_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}, not live.
+            {" "}{a.remaining} mistake{a.remaining === 1 ? " remains" : "s remain"} after all checks.
+            {a.failed_notes.length > 0 && ` ${a.failed_notes.length} note${a.failed_notes.length === 1 ? "" : "s"} failed and count as nothing found.`}
+            {" "}Ten notes show the direction, not a precise accuracy.
+          </div>
+        </>
       )}
     </div>
   );

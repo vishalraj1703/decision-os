@@ -207,6 +207,10 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
         return Response(json.dumps(svc.export_jira(me, key), indent=1, ensure_ascii=False), media_type="application/json",
                         headers={"content-disposition": 'attachment; filename="decision-os-jira.json"'})
 
+    @app.delete("/meetings/{meeting_id}")
+    def purge_meeting(meeting_id: str, me: Person = Depends(user)):
+        return svc.purge_meeting(me, meeting_id)
+
     @app.get("/meetings/{meeting_id}/source")
     def source(meeting_id: str, me: Person = Depends(user)):
         return svc.meeting_source(meeting_id)

@@ -9,7 +9,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 
-from . import cascade, clarify, conflicts, dates, export, extract, health, risk
+from . import cascade, clarify, conflicts, dates, export, extract, gold, health, risk
 from .ai import AuditedAI
 from .config import Settings
 from .db import DB, new_id
@@ -247,6 +247,7 @@ class Service:
             "teams": team_rows,
             "meetings": meeting_list,
             "health": meeting_list[-1]["health"] if meeting_list else None,
+            "accuracy": self.accuracy(),
             "notifications": notes,
             "unread": sum(1 for n in notes if not n["read"]),
             "emails": self.db.emails(10),
@@ -471,6 +472,18 @@ class Service:
             return {"text": "No blockers. All handoffs are on track.", "severity": "grey", "source": "rule"}
         return {"text": "Paste meeting notes to build the decision graph.", "severity": "grey", "source": "rule"}
 
+    @staticmethod
+    def accuracy() -> dict | None:
+        """The recorded gold-set run (scripts/eval_gold.py). Never computed on a page load."""
+        r = gold.load_results()
+        if not r:
+            return None
+        caught = [{"note": n["title"], **m} for n in r["per_note"] for m in n.get("caught", [])]
+        lost = [{"note": n["title"], **m} for n in r["per_note"] for m in n.get("lost", [])]
+        return {"measured_at": r["measured_at"], "model": r["model"], "notes": r["notes"], "gold_items": r["gold_items"],
+                "failed_notes": r["failed_notes"], "layers": r["layers"], "caught": caught[:8], "caught_total": len(caught), "lost": lost[:5], "lost_total": len(lost),
+                "remaining": sum(len(n.get("remaining", [])) for n in r["per_note"])}
+
     # Risk propagation (what-if)
     def _live_actions(self) -> list[dict]:
         return [a for a in self.db.items("WHERE kind='action'") if a["review_state"] != "discarded"]
@@ -531,6 +544,16 @@ class Service:
 
     def export_jira(self, me: Person, project: str) -> dict:
         return export.to_jira(self.export_actions(me), project)
+
+    def purge_meeting(self, me: Person, meeting_id: str) -> dict:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Only managers delete meetings.", 403)
+        out = self.db.purge_meeting(meeting_id)
+        if out is None:
+            raise AppError("NOT_FOUND", "Meeting not found.", 404)
+        cascade.recompute(self.db, self.s.timezone)
+        log.info("purged meeting=%s items=%d by=%s", meeting_id, out["items"], me.id)
+        return {"ok": True, **out}
 
     def meeting_source(self, meeting_id: str) -> dict:
         m = self.db.meeting(meeting_id)

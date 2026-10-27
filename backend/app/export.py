@@ -11,7 +11,7 @@ import io
 import re
 
 COLUMNS = ["Task", "Owner", "Team", "Deadline", "Deadline status", "Status", "Flags", "Verified", "Confidence",
-           "Evidence", "Meeting", "Meeting date", "Depends on"]
+           "Evidence", "Evidence hash", "Meeting", "Meeting date", "Depends on"]
 
 
 def _cell(v: object) -> str:
@@ -34,7 +34,7 @@ def to_csv(actions: list[dict]) -> str:
         w.writerow([_cell(x) for x in (
             a["text"], a["owner"] or "UNKNOWN", a["team"] or "", a["deadline_date"] or a["deadline_raw"] or "UNKNOWN",
             a["deadline_status"], a["status"], "; ".join(a["missing_info"]), _verified(a), f"{a['confidence']:.2f}",
-            a["evidence_quote"], a["meeting"]["topic"], a["meeting"]["date"],
+            a["evidence_quote"], a.get("evidence_hash") or "", a["meeting"]["topic"], a["meeting"]["date"],
             "; ".join(by_id[d]["text"] for d in a["depends_on"] if d in by_id),
         )])
     return buf.getvalue()
@@ -51,7 +51,8 @@ def to_jira(actions: list[dict], project: str) -> dict:
         lines = [f"From the meeting “{a['meeting']['topic']}” ({a['meeting']['date']}).",
                  f"Evidence: {{quote}}{a['evidence_quote']}{{quote}}",
                  f"Owner in the notes: {a['owner'] or 'UNKNOWN'}" + (f" ({a['team']})" if a["team"] else ""),
-                 f"Verified by Decision OS: {_verified(a)}, confidence {a['confidence']:.2f} (self-reported)."]
+                 f"Verified by Decision OS: {_verified(a)}, confidence {a['confidence']:.2f} (self-reported).",
+                 f"Evidence fingerprint: {a.get('evidence_hash') or 'n/a'}"]
         deps = [by_id[d]["text"] for d in a["depends_on"] if d in by_id]
         if deps:
             lines.append("Depends on: " + "; ".join(deps))

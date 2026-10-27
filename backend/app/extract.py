@@ -342,7 +342,7 @@ def _replay(pass1: list[dict], items: list[CheckedItem], rejected: list[dict]) -
                        final={"owner": it.owner or UNKNOWN, "deadline": it.deadline_raw}, reasons=reasons)
         else:
             r = gone.get(p["slot"], {"by": "code", "reason": "Removed."})
-            row.update(outcome="removed", final=None, reasons=[{"by": r["by"], "text": r["reason"]}])
+            row.update(outcome="removed", final=None, reasons=[{"by": r["by"], "text": r["reason"].removeprefix("Verifier: ")}])
         out.append(row)
     return out
 

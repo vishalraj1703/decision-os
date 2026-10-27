@@ -1,0 +1,124 @@
+{
+ "about": "Hand-labelled gold set for the accuracy scoreboard. Labelling rules: fixtures/gold/README.md.",
+ "notes": [
+  {
+   "id": "g01", "date": "2026-10-26", "title": "Sprint planning",
+   "notes": "Sprint 14 planning. Priya will finish the API spec by Nov 4. Maybe look at offsite options, Arun? Ask Meera whether someone can close the vendor renewal by Nov 6. Ravi said the staging server might be too slow for load tests. We agreed to ship mobile first.",
+   "traps": ["'Maybe' suggestion is not a task", "Meera is only asked, not the owner", "Ravi reports the risk, he does not own it"],
+   "items": [
+    {"kind": "action", "evidence": "Priya will finish the API spec by Nov 4", "owner": "Priya", "deadline": "Nov 4"},
+    {"kind": "action", "evidence": "close the vendor renewal by Nov 6", "owner": "UNKNOWN", "deadline": "Nov 6"},
+    {"kind": "risk", "evidence": "the staging server might be too slow for load tests", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "decision", "evidence": "We agreed to ship mobile first", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": ["Maybe look at offsite options, Arun?"]
+  },
+  {
+   "id": "g02", "date": "2026-10-19", "title": "Checkout sync",
+   "notes": "Checkout sync. Raj will fix the payment timeout bug by Friday. Asha will update the checkout copy once Raj fixes the bug. Someone needs to email the payment provider about fees. We decided to drop PayPal for now. Priya thinks the test data is stale.",
+   "traps": ["'Someone' is not an owner", "Priya voices a concern; she does not own it"],
+   "items": [
+    {"kind": "action", "evidence": "Raj will fix the payment timeout bug by Friday", "owner": "Raj", "deadline": "Friday"},
+    {"kind": "action", "evidence": "Asha will update the checkout copy once Raj fixes the bug", "owner": "Asha", "deadline": "once Raj fixes the bug"},
+    {"kind": "action", "evidence": "Someone needs to email the payment provider about fees", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "decision", "evidence": "We decided to drop PayPal for now", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "risk", "evidence": "Priya thinks the test data is stale", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": []
+  },
+  {
+   "id": "g03", "date": "2026-10-21", "title": "Budget review",
+   "notes": "Budget review. The finance team will send the revised forecast next week. Kavya will approve the cloud budget by Oct 24. Let's think about moving to annual billing. Ravi flagged that the AWS bill doubled last month. We agreed to freeze new vendor contracts until December.",
+   "traps": ["A team is not a named owner", "'Think about' is not a task", "Ravi flags the risk, he does not own it"],
+   "items": [
+    {"kind": "action", "evidence": "The finance team will send the revised forecast next week", "owner": "UNKNOWN", "deadline": "next week"},
+    {"kind": "action", "evidence": "Kavya will approve the cloud budget by Oct 24", "owner": "Kavya", "deadline": "Oct 24"},
+    {"kind": "risk", "evidence": "the AWS bill doubled last month", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "decision", "evidence": "We agreed to freeze new vendor contracts until December", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": ["Let's think about moving to annual billing."]
+  },
+  {
+   "id": "g04", "date": "2026-10-22", "title": "Onboarding revamp",
+   "notes": "Onboarding revamp. Arun to update the onboarding deck. Meera will record the setup video by Oct 30. Someone has to check whether the HR portal supports SSO. Asha mentioned the welcome email has broken links. Leena owns the welcome email fix and will finish it tomorrow.",
+   "traps": ["No deadline for Arun: do not invent one", "Asha reports the risk; the fix owner is in a different sentence"],
+   "items": [
+    {"kind": "action", "evidence": "Arun to update the onboarding deck", "owner": "Arun", "deadline": "UNKNOWN"},
+    {"kind": "action", "evidence": "Meera will record the setup video by Oct 30", "owner": "Meera", "deadline": "Oct 30"},
+    {"kind": "action", "evidence": "Someone has to check whether the HR portal supports SSO", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "risk", "evidence": "the welcome email has broken links", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "action", "evidence": "Leena owns the welcome email fix and will finish it tomorrow", "owner": "Leena", "deadline": "tomorrow"}
+   ],
+   "not_items": []
+  },
+  {
+   "id": "g05", "date": "2026-10-23", "title": "Release readiness",
+   "notes": "Release readiness. Ravi already finished the security review. Priya will run the regression suite once the release branch is cut. Raj will cut the release branch on Monday. We are not doing a beta this time. Meera worries the Android build is flaky.",
+   "traps": ["Finished work has no deadline", "'Not doing a beta' must not become a task", "Meera worries; she does not own the risk"],
+   "items": [
+    {"kind": "action", "evidence": "Ravi already finished the security review", "owner": "Ravi", "deadline": "UNKNOWN"},
+    {"kind": "action", "evidence": "Priya will run the regression suite once the release branch is cut", "owner": "Priya", "deadline": "once the release branch is cut"},
+    {"kind": "action", "evidence": "Raj will cut the release branch on Monday", "owner": "Raj", "deadline": "Monday"},
+    {"kind": "decision", "evidence": "We are not doing a beta this time", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "risk", "evidence": "the Android build is flaky", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": []
+  },
+  {
+   "id": "g06", "date": "2026-10-26", "title": "Launch date",
+   "notes": "Launch date discussion. Sam says launch on Nov 10, Leena says Nov 12. Asha will prepare the launch checklist by Nov 5. We should probably revisit pricing at some point. Kavya will confirm the marketing budget tomorrow.",
+   "traps": ["A disagreement is not a decision or a task", "'Probably at some point' is not a task"],
+   "items": [
+    {"kind": "action", "evidence": "Asha will prepare the launch checklist by Nov 5", "owner": "Asha", "deadline": "Nov 5"},
+    {"kind": "action", "evidence": "Kavya will confirm the marketing budget tomorrow", "owner": "Kavya", "deadline": "tomorrow"}
+   ],
+   "not_items": ["Sam says launch on Nov 10, Leena says Nov 12.", "We should probably revisit pricing at some point."]
+  },
+  {
+   "id": "g07", "date": "2026-10-20", "title": "Infra weekly",
+   "notes": "Infra weekly. We agreed to move logs to the new cluster. Ravi will migrate the log pipeline by Oct 31. Someone should rotate the database passwords this week. Raj said he might look into the CDN cache misses. The database is close to its storage limit.",
+   "traps": ["'Might look into' is not a commitment", "Nobody owns the storage risk"],
+   "items": [
+    {"kind": "decision", "evidence": "We agreed to move logs to the new cluster", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "action", "evidence": "Ravi will migrate the log pipeline by Oct 31", "owner": "Ravi", "deadline": "Oct 31"},
+    {"kind": "action", "evidence": "Someone should rotate the database passwords this week", "owner": "UNKNOWN", "deadline": "this week"},
+    {"kind": "risk", "evidence": "The database is close to its storage limit", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": ["Raj said he might look into the CDN cache misses."]
+  },
+  {
+   "id": "g08", "date": "2026-10-27", "title": "Design review",
+   "notes": "Design review. Asha will deliver the mobile mockups by Oct 30. The QA test plan depends on the mockups; Meera will write it after Asha delivers. Priya asked whether the icons are final. We decided to use the new brand colors.",
+   "traps": ["Dependency wording is the deadline", "A question is not a task"],
+   "items": [
+    {"kind": "action", "evidence": "Asha will deliver the mobile mockups by Oct 30", "owner": "Asha", "deadline": "Oct 30"},
+    {"kind": "action", "evidence": "Meera will write it after Asha delivers", "owner": "Meera", "deadline": "after Asha delivers"},
+    {"kind": "decision", "evidence": "We decided to use the new brand colors", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": ["Priya asked whether the icons are final."]
+  },
+  {
+   "id": "g09", "date": "2026-10-24", "title": "Vendor call",
+   "notes": "Vendor call recap. Ask Raj if he can own the SLA renegotiation. Kavya will send the signed contract to legal by Oct 29. The vendor may raise prices in January. Perhaps we could get a second quote.",
+   "traps": ["Raj is asked, not assigned", "'Perhaps' is not a task"],
+   "items": [
+    {"kind": "action", "evidence": "own the SLA renegotiation", "owner": "UNKNOWN", "deadline": "UNKNOWN"},
+    {"kind": "action", "evidence": "Kavya will send the signed contract to legal by Oct 29", "owner": "Kavya", "deadline": "Oct 29"},
+    {"kind": "risk", "evidence": "The vendor may raise prices in January", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": ["Perhaps we could get a second quote."]
+  },
+  {
+   "id": "g10", "date": "2026-10-28", "title": "Support escalation",
+   "notes": "Support escalation. Meera will call the customer at +91 98450 12345 by tomorrow. Priya will write the root cause report by Nov 2. Customer contact is ops@acme-retail.com. Raj already merged the fix. Nobody owns the status page update yet.",
+   "traps": ["Phone and email must be masked before the AI", "Finished work has no deadline", "'Nobody owns' means UNKNOWN"],
+   "items": [
+    {"kind": "action", "evidence": "Meera will call the customer", "owner": "Meera", "deadline": "tomorrow"},
+    {"kind": "action", "evidence": "Priya will write the root cause report by Nov 2", "owner": "Priya", "deadline": "Nov 2"},
+    {"kind": "action", "evidence": "Raj already merged the fix", "owner": "Raj", "deadline": "UNKNOWN"},
+    {"kind": "action", "evidence": "Nobody owns the status page update yet", "owner": "UNKNOWN", "deadline": "UNKNOWN"}
+   ],
+   "not_items": []
+  }
+ ]
+}

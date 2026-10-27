@@ -1,0 +1,424 @@
+{
+ "measured_at": "2026-10-27T20:51:18+00:00",
+ "model": "Llama-3.3-70B",
+ "notes": 10,
+ "gold_items": 39,
+ "failed_notes": [],
+ "layers": {
+  "pass1": {
+   "label": "Pass 1 alone (one prompt)",
+   "predicted": 43,
+   "gold": 39,
+   "matched": 39,
+   "hallucinations": 7,
+   "owners_lost": 0,
+   "precision": 0.907,
+   "recall": 1.0,
+   "hallucination_rate": 0.163
+  },
+  "code": {
+   "label": "+ code checks",
+   "predicted": 43,
+   "gold": 39,
+   "matched": 39,
+   "hallucinations": 5,
+   "owners_lost": 0,
+   "precision": 0.907,
+   "recall": 1.0,
+   "hallucination_rate": 0.116
+  },
+  "full": {
+   "label": "+ Verifier (Decision OS)",
+   "predicted": 39,
+   "gold": 39,
+   "matched": 38,
+   "hallucinations": 1,
+   "owners_lost": 0,
+   "precision": 0.974,
+   "recall": 0.974,
+   "hallucination_rate": 0.026
+  }
+ },
+ "per_note": [
+  {
+   "id": "g01",
+   "title": "Sprint planning",
+   "latency_ms": 21554,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 5,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 5,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [
+    {
+     "type": "invented item",
+     "text": "look at offsite options",
+     "why": "a suggestion, question or non-task"
+    }
+   ],
+   "remaining": [],
+   "lost": []
+  },
+  {
+   "id": "g02",
+   "title": "Checkout sync",
+   "latency_ms": 23418,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 4,
+     "gold": 5,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [],
+   "remaining": [],
+   "lost": [
+    {
+     "text": "Stale test data",
+     "why": "The note only mentions Priya's thought, not a raised risk or agreed task."
+    }
+   ]
+  },
+  {
+   "id": "g03",
+   "title": "Budget review",
+   "latency_ms": 19364,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [
+    {
+     "type": "invented field",
+     "text": "send the revised forecast",
+     "why": "owner The finance team (key: UNKNOWN)"
+    }
+   ],
+   "remaining": [],
+   "lost": []
+  },
+  {
+   "id": "g04",
+   "title": "Onboarding revamp",
+   "latency_ms": 21671,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [],
+   "remaining": [],
+   "lost": []
+  },
+  {
+   "id": "g05",
+   "title": "Release readiness",
+   "latency_ms": 19559,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 5,
+     "gold": 5,
+     "matched": 5,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [
+    {
+     "type": "invented field",
+     "text": "Android build is flaky",
+     "why": "owner Meera (key: UNKNOWN)"
+    }
+   ],
+   "remaining": [],
+   "lost": []
+  },
+  {
+   "id": "g06",
+   "title": "Launch date",
+   "latency_ms": 18513,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 3,
+     "gold": 2,
+     "matched": 2,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 3,
+     "gold": 2,
+     "matched": 2,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 2,
+     "gold": 2,
+     "matched": 2,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [
+    {
+     "type": "invented item",
+     "text": "Pricing not revisited",
+     "why": "a suggestion, question or non-task"
+    }
+   ],
+   "remaining": [],
+   "lost": []
+  },
+  {
+   "id": "g07",
+   "title": "Infra weekly",
+   "latency_ms": 22237,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 5,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 5,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [
+    {
+     "type": "invented item",
+     "text": "look into the CDN cache misses",
+     "why": "a suggestion, question or non-task"
+    }
+   ],
+   "remaining": [],
+   "lost": []
+  },
+  {
+   "id": "g08",
+   "title": "Design review",
+   "latency_ms": 20623,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 4,
+     "gold": 3,
+     "matched": 3,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 4,
+     "gold": 3,
+     "matched": 3,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 4,
+     "gold": 3,
+     "matched": 3,
+     "hallucinations": 1,
+     "owners_lost": 0
+    }
+   },
+   "caught": [],
+   "remaining": [
+    {
+     "type": "invented item",
+     "text": "icons are not final",
+     "why": "a suggestion, question or non-task"
+    }
+   ],
+   "lost": []
+  },
+  {
+   "id": "g09",
+   "title": "Vendor call",
+   "latency_ms": 16009,
+   "verify": "ok",
+   "masked": {},
+   "scores": {
+    "pass1": {
+     "predicted": 3,
+     "gold": 3,
+     "matched": 3,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 3,
+     "gold": 3,
+     "matched": 3,
+     "hallucinations": 1,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 3,
+     "gold": 3,
+     "matched": 3,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [
+    {
+     "type": "invented field",
+     "text": "own the SLA renegotiation",
+     "why": "owner Raj (key: UNKNOWN)"
+    }
+   ],
+   "remaining": [],
+   "lost": []
+  },
+  {
+   "id": "g10",
+   "title": "Support escalation",
+   "latency_ms": 17059,
+   "verify": "ok",
+   "masked": {
+    "email": 1,
+    "phone": 1
+   },
+   "scores": {
+    "pass1": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "code": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    },
+    "full": {
+     "predicted": 4,
+     "gold": 4,
+     "matched": 4,
+     "hallucinations": 0,
+     "owners_lost": 0
+    }
+   },
+   "caught": [],
+   "remaining": [],
+   "lost": []
+  }
+ ]
+}
