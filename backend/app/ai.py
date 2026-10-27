@@ -5,8 +5,11 @@ replay  development without a key: recorded or hand-written replies for the bund
         notes, plus deterministic stand-ins for embeddings and the conflict check. Always
         badged "Replay (dev)" in the UI. Never presented as Qualcomm output.
 
-With QUALCOMM_RECORD=1 the live provider also saves its extraction replies to
-fixtures/replay/, so a connectivity-loss fallback replays real Qualcomm output.
+With QUALCOMM_RECORD=1 the live provider also saves its extraction and Verifier replies
+to data/recorded/, so a connectivity-loss fallback replays real Qualcomm output.
+
+AuditedAI wraps either provider and logs every call (purpose, model, latency, verdict;
+never the text) to the ai_calls table.
 """
 
 from __future__ import annotations
@@ -16,10 +19,13 @@ import json
 import math
 import os
 import re
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from .config import ROOT, Settings
-from .prompts import CALLOUT_SYSTEM, CONFLICT_SYSTEM, EXTRACTION_SYSTEM, notes_from_messages
+from .prompts import CALLOUT_SYSTEM, CONFLICT_SYSTEM, EXTRACTION_SYSTEM, VERIFY_SYSTEM, claims_from_messages, notes_from_messages
 from .qualcomm import ChatResult, Qualcomm, QualcommError
 
 REPLAY_DIR = ROOT / "fixtures" / "replay"          # hand-written dev replies (used by tests)
@@ -29,6 +35,19 @@ RECORDED_DIR = ROOT / "data" / "recorded"          # real Qualcomm replies, save
 def notes_key(notes: str) -> str:
     """Whitespace-insensitive key, so pasted notes match even if line breaks or spaces differ."""
     return hashlib.sha256(" ".join(notes.split()).encode()).hexdigest()[:12]
+
+
+# Replay stand-in for the Verifier: tentative wording is not an agreed task.
+_VAGUE = re.compile(r"\b(maybe|perhaps|possibly|might|look into|looking into|think about|thinking about|consider)\b", re.I)
+
+
+def _replay_verdicts(claims: list[dict]) -> dict:
+    out = []
+    for c in claims:
+        vague = c.get("kind") == "action" and _VAGUE.search(c.get("evidence", ""))
+        out.append({"id": c["id"], "supported": not vague, "owner_stated": True, "deadline_stated": True,
+                    "reason": "Replay heuristic: tentative wording, not an agreed task." if vague else ""})
+    return {"verdicts": out}
 
 
 _STOP = {"the", "and", "for", "with", "our", "use", "will", "this", "that", "from", "first", "deploy", "launch"}
@@ -68,6 +87,14 @@ class ReplayAI:
             data = json.loads(path.read_text(encoding="utf-8"))
             return ChatResult(text=data["reply"], tool_arguments=None, model=data.get("model", self.model),
                               latency_ms=0, finish_reason="stop", prompt_tokens=None, completion_tokens=None)
+        if system == VERIFY_SYSTEM:
+            name = f"verify-{notes_key(_notes_from(messages))}.json"
+            dirs = ([RECORDED_DIR] if self.prefer_recorded else []) + [REPLAY_DIR]
+            path = next((d / name for d in dirs if (d / name).exists()), None)
+            if path is not None:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return ChatResult(data["reply"], None, data.get("model", self.model), 0, "stop", None, None)
+            return ChatResult(json.dumps(_replay_verdicts(claims_from_messages(messages))), None, self.model, 0, "stop", None, None)
         if system == CONFLICT_SYSTEM:
             payload = json.loads(messages[1]["content"])
             a, b = payload["earlier_decision"]["decision"], payload["new_decision"]["decision"]
@@ -117,10 +144,11 @@ class LiveAI:
             self.last_error = e.code
             raise
         self.last_error = None
-        if self.record and messages[0]["content"] == EXTRACTION_SYSTEM and r.text:
+        kind = {EXTRACTION_SYSTEM: "extract", VERIFY_SYSTEM: "verify"}.get(messages[0]["content"])
+        if self.record and kind and r.text:
             RECORDED_DIR.mkdir(parents=True, exist_ok=True)
             notes = _notes_from(messages)
-            (RECORDED_DIR / f"extract-{notes_key(notes)}.json").write_text(
+            (RECORDED_DIR / f"{kind}-{notes_key(notes)}.json").write_text(
                 json.dumps({"source": "recorded live Qualcomm reply", "model": r.model, "reply": r.text}, indent=1), encoding="utf-8")
         return r
 
@@ -133,6 +161,81 @@ class LiveAI:
     def status(self) -> dict:
         return {"mode": self.mode, "model": self.model, "endpoint": self.s.qualcomm_endpoint,
                 "client": self.s.qualcomm_client, "structured_mode": self.s.structured_mode, "last_error": self.last_error}
+
+
+_PURPOSE = {EXTRACTION_SYSTEM: "extract", VERIFY_SYSTEM: "verify", CONFLICT_SYSTEM: "conflict", CALLOUT_SYSTEM: "callout"}
+
+
+class AuditedAI:
+    """Logs every AI call to the audit table: purpose, model, latency, outcome. Never the text."""
+
+    def __init__(self, inner, db):
+        self.inner = inner
+        self.db = db
+        self._local = threading.local()
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    @contextmanager
+    def scope(self, meeting_id: str | None):
+        """Tag the calls made on this thread with a meeting."""
+        prev = getattr(self._local, "meeting", None)
+        self._local.meeting = meeting_id
+        try:
+            yield
+        finally:
+            self._local.meeting = prev
+
+    def _log(self, purpose: str, started: float, model: str | None, ok: bool, verdict: str, r: ChatResult | None = None) -> None:
+        latency = r.latency_ms if r is not None and r.latency_ms else int((time.perf_counter() - started) * 1000)
+        try:
+            self._local.last = self.db.log_ai_call(
+                meeting_id=getattr(self._local, "meeting", None), purpose=purpose, mode=getattr(self.inner, "mode", ""),
+                model=model or getattr(self.inner, "model", ""), latency_ms=latency, ok=ok, verdict=verdict,
+                prompt_tokens=r.prompt_tokens if r else None, completion_tokens=r.completion_tokens if r else None)
+        except Exception:  # noqa: BLE001 - auditing must never break a call
+            self._local.last = None
+
+    def annotate(self, verdict: str) -> None:
+        last = getattr(self._local, "last", None)
+        if last:
+            self.db.annotate_ai_call(last, verdict)
+
+    def chat(self, messages: list[dict], **kw) -> ChatResult:
+        purpose = _PURPOSE.get(messages[0]["content"], "chat")
+        if purpose == "extract" and len(messages) > 2:
+            purpose = "extract retry"
+        t = time.perf_counter()
+        try:
+            r = self.inner.chat(messages, **kw)
+        except QualcommError as e:
+            self._log(purpose, t, None, False, e.code)
+            raise
+        self._log(purpose, t, r.model, True, "cut off" if r.finish_reason == "length" else "ok", r)
+        return r
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        t = time.perf_counter()
+        try:
+            out = self.inner.embed(texts)
+        except Exception as e:
+            self._log("embed", t, None, False, getattr(e, "code", type(e).__name__))
+            raise
+        self._log("embed", t, getattr(self.inner.s, "embedding_model", None) if self.inner.mode == "live" else None,
+                  True, f"{len(texts)} text{'s' if len(texts) != 1 else ''}")
+        return out
+
+    def rerank(self, query: str, documents: list[str], top_n: int = 3) -> list[tuple[int, float]]:
+        t = time.perf_counter()
+        try:
+            out = self.inner.rerank(query, documents, top_n)
+        except Exception as e:
+            self._log("rerank", t, None, False, getattr(e, "code", type(e).__name__))
+            raise
+        self._log("rerank", t, getattr(self.inner.s, "reranker_model", None) if self.inner.mode == "live" else None,
+                  True, f"{len(documents)} candidates")
+        return out
 
 
 def build_ai(s: Settings):

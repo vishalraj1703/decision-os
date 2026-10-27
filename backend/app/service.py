@@ -10,10 +10,12 @@ import threading
 from dataclasses import dataclass, field
 
 from . import cascade, conflicts, dates, extract
+from .ai import AuditedAI
 from .config import Settings
 from .db import DB, new_id
 from .emailer import Mailer
 from .prompts import callout_messages
+from .redact import redact
 from .roster import BY_EMAIL, PEOPLE, Person, find_person
 
 log = logging.getLogger("decisionos.service")
@@ -49,6 +51,10 @@ class Service:
     s: Settings
     _callout_busy: set = field(default_factory=set)
 
+    def __post_init__(self):
+        if not isinstance(self.ai, AuditedAI):
+            self.ai = AuditedAI(self.ai, self.db)
+
     # Feature 1-3: ingest
     def ingest(self, notes: str, meeting_date: dt.date, title: str | None, by: Person) -> dict:
         if by.role != "manager":
@@ -58,12 +64,15 @@ class Service:
             raise AppError("EMPTY", "Paste some meeting notes first.", 422)
         if len(text) > MAX_NOTES:
             raise AppError("TOO_LONG", f"Notes are {len(text)} characters; the limit is {MAX_NOTES}.", 422)
+        # Masked before any AI call; the masked text is also what is stored and highlighted.
+        text, masked = redact(text)
+        meeting_id = new_id("mtg")
         try:
-            out = extract.run(self.ai, text, meeting_date, self.s.structured_mode)
+            with self.ai.scope(meeting_id):
+                out = extract.run(self.ai, text, meeting_date, self.s.structured_mode, verify=self.s.verifier_enabled)
         except extract.ExtractionFailed as e:
             raise AppError(e.code, e.message, 502 if e.code != "NO_REPLAY" else 422, e.details) from None
 
-        meeting_id = new_id("mtg")
         ids = {it.ref: new_id("itm") for it in out.items}
         rows = []
         for it in out.items:
@@ -78,14 +87,15 @@ class Service:
                 "severity": it.severity, "evidence_quote": it.evidence_quote, "ev_start": it.ev_start, "ev_end": it.ev_end,
                 "confidence": it.confidence, "missing_info": it.missing_info,
                 "checks": it.checks + ([] if person or not it.owner else [f"'{it.owner}' is not in the team roster."]),
-                "review_state": review, "status": it.status,
+                "review_state": review, "status": it.status, "verification": it.verification,
             })
-        self._attach_embeddings(rows)
+        with self.ai.scope(meeting_id):
+            self._attach_embeddings(rows)
         deps = [(ids[it.ref], ids[d]) for it in out.items for d in it.dependencies if d in ids]
         self.db.save_meeting(
             {"id": meeting_id, "topic": out.topic, "title": title, "meeting_date": meeting_date.isoformat(), "notes": text,
              "created_by": by.id, "model": out.model, "attempts": out.attempts, "latency_ms": out.latency_ms,
-             "rejected": out.rejected},
+             "rejected": out.rejected, "replay": out.replay, "verify": out.verify, "redactions": masked},
             rows, deps,
         )
         for c in out.contradictions:
@@ -100,7 +110,8 @@ class Service:
         self.after_ingest(meeting_id)
         log.info("ingested meeting=%s items=%d attempts=%d mode=%s", meeting_id, len(rows), out.attempts, self.ai.mode)
         return {"meeting_id": meeting_id, "topic": out.topic, "items": len(rows), "attempts": out.attempts,
-                "latency_ms": out.latency_ms, "model": out.model, "rejected": out.rejected}
+                "latency_ms": out.latency_ms, "model": out.model, "rejected": out.rejected, "verify": out.verify,
+                "redactions": masked}
 
     def _attach_embeddings(self, rows: list[dict]) -> None:
         """Decisions get an embedding so later meetings can find conflicting decisions (Feature 4)."""
@@ -129,7 +140,8 @@ class Service:
 
     def _detect_conflicts(self, meeting_id: str) -> None:
         try:
-            conflicts.detect(self.db, self.ai, meeting_id)
+            with self.ai.scope(meeting_id):
+                conflicts.detect(self.db, self.ai, meeting_id)
         except Exception:  # noqa: BLE001 - conflict detection must never lose an extraction
             log.exception("conflict detection failed")
         for c in self.db.contradictions():
@@ -221,6 +233,7 @@ class Service:
             "notifications": notes,
             "unread": sum(1 for n in notes if not n["read"]),
             "emails": self.db.emails(10),
+            "ai_calls": self.db.ai_calls(15),
         }
 
     @staticmethod
@@ -446,7 +459,8 @@ class Service:
         if m is None:
             raise AppError("NOT_FOUND", "Meeting not found.", 404)
         return {"id": m["id"], "topic": m["topic"], "meeting_date": m["meeting_date"], "notes": m["notes"],
-                "rejected": m["rejected"], "model": m["model"], "attempts": m["attempts"]}
+                "rejected": m["rejected"], "model": m["model"], "attempts": m["attempts"], "replay": m["replay"],
+                "verify": m["verify"], "redactions": m["redactions"]}
 
     @staticmethod
     def people() -> list[dict]:

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, fmtDate, Item, ManagerState, STATUS_LABEL } from "@/lib/api";
+import { api, ApiError, fmtDate, Item, ManagerState, STATUS_LABEL, VerifyInfo } from "@/lib/api";
 import { statusLabel } from "./Flowchart";
 import Icon from "./Icon";
+import { TrustReceipt } from "./Trust";
 
 type Person = { name: string; email: string; team: string; role: string };
 
@@ -87,7 +88,7 @@ export function ActionTable({ actions, onSource }: { actions: Item[]; onSource: 
       {rows.length === 0 ? <div className="empty">{actions.length ? "Nothing in this view." : "No action items yet."}</div> : (
         <div style={{ overflowX: "auto" }}>
           <table className="table">
-            <thead><tr><th style={{ width: "26%" }}>Task</th><th>Owner</th><th>Deadline</th><th>Status</th><th style={{ width: "30%" }}>Evidence</th><th>Confidence</th></tr></thead>
+            <thead><tr><th style={{ width: "26%" }}>Task</th><th>Owner</th><th>Deadline</th><th>Status</th><th style={{ width: "30%" }}>Evidence</th><th>Trust receipt</th></tr></thead>
             <tbody>
               {rows.map((a) => {
                 const missing = a.missing_info.length > 0;
@@ -103,7 +104,7 @@ export function ActionTable({ actions, onSource }: { actions: Item[]; onSource: 
                     <td><span className={`status s-${a.color}`}><i />{statusLabel(a)}</span>
                       {a.status === "blocked" && a.blocked_reason && <div className="tiny muted" style={{ marginTop: 3 }}>{a.blocked_reason}</div>}</td>
                     <td><span className="quote">{short(a.evidence_quote)}</span><div><button className="link" onClick={() => onSource(a)} aria-label={`View source for ${a.text}`}>View source</button></div></td>
-                    <td><span className="conf"><span className="conf-bar"><b style={{ width: `${Math.round(a.confidence * 100)}%` }} /></span>{Math.round(a.confidence * 100)}%</span></td>
+                    <td><TrustReceipt i={a} /></td>
                   </tr>
                 );
               })}
@@ -111,7 +112,7 @@ export function ActionTable({ actions, onSource }: { actions: Item[]; onSource: 
           </table>
         </div>
       )}
-      <div className="card-foot">Confidence is the model's own estimate, not a measured accuracy. Every row links to the sentence it came from.</div>
+      <div className="card-foot">Trust receipt: the quote was found in the notes, the Verifier confirmed its meaning, and the model&apos;s self-reported confidence (not a measured accuracy). Every row links to the sentence it came from.</div>
     </div>
   );
 }
@@ -225,13 +226,23 @@ export function NewMeeting({ demos, model, live, onClose }: {
   async function run() {
     setBusy(true); setMsg(null);
     try {
-      const r = await api<{ items: number; attempts: number; latency_ms: number; topic: string; rejected: { text: string }[] }>(
-        "extract", "POST", { notes, meeting_date: date });
+      const r = await api<{ items: number; attempts: number; latency_ms: number; topic: string; rejected: { text: string; by?: string }[];
+        verify: VerifyInfo; redactions: Record<string, number> }>("extract", "POST", { notes, meeting_date: date });
       const parts = [`${r.items} item${r.items === 1 ? "" : "s"} extracted from “${r.topic}”`];
       if (live) parts.push(`in ${(r.latency_ms / 1000).toFixed(1)} s`);
       if (r.attempts > 1) parts.push("after one corrective retry");
       let text = parts.join(" ") + ".";
-      if (r.rejected.length) text += ` ${r.rejected.length} claim${r.rejected.length === 1 ? " was" : "s were"} rejected because no matching sentence exists in the notes.`;
+      const masked = Object.values(r.redactions ?? {}).reduce((a, b) => a + b, 0);
+      if (masked) text += ` Masked ${masked} contact detail${masked === 1 ? "" : "s"} (email, phone or ID) before the AI saw the notes.`;
+      const noQuote = r.rejected.filter((x) => x.by !== "verifier").length;
+      if (noQuote) text += ` ${noQuote} claim${noQuote === 1 ? " was" : "s were"} rejected because no matching sentence exists in the notes.`;
+      if (r.verify?.status === "ok") {
+        const v = r.verify;
+        const did = [v.removed && `removed ${v.removed}`, v.corrected && `corrected ${v.corrected}`].filter(Boolean).join(" and ");
+        text += ` The Verifier ${did || "confirmed every item"}${live && v.latency_ms ? ` in ${(v.latency_ms / 1000).toFixed(1)} s` : ""}.`;
+      } else if (r.verify?.status === "failed") {
+        text += " The Verifier did not answer, so items are marked not verified.";
+      }
       setMsg({ ok: true, text });
       setNotes("");
     } catch (e) {

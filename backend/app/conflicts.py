@@ -79,6 +79,9 @@ def detect(db: DB, ai, meeting_id: str) -> list[str]:
                 log.warning("conflict check failed: %s", type(e).__name__)
                 continue
             verdict = _parse(r.text)
+            annotate = getattr(ai, "annotate", None)
+            if annotate:
+                annotate("unusable reply" if verdict is None else "contradicts" if verdict.contradicts else "no conflict")
             if verdict is None or not verdict.contradicts:
                 continue
             cid = db.add_contradiction(

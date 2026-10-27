@@ -13,9 +13,19 @@ export interface Item {
   missing_info: string[]; checks: string[]; status: Status; blocked_reason: string | null;
   review_state: "ok" | "needs_review" | "follow_up" | "discarded" | "superseded";
   overdue: boolean; at_risk: boolean; depends_on: string[]; color: Color;
+  verification: Verification | null;
   meeting: { id: string; topic: string; date: string };
   blocked_by?: Brief[]; blocking?: Brief[];
 }
+/** Trust Receipt: quote found in code, meaning judged by the Verifier (null = not checked). */
+export interface Verification { quote_found: boolean; supported: boolean | null; owner_ok: boolean | null; deadline_ok: boolean | null; by: string | null; note: string | null }
+export interface ReplayRow {
+  kind: "action" | "decision" | "risk"; text: string; owner: string; deadline: string; evidence: string;
+  outcome: "kept" | "corrected" | "removed"; final: { owner: string; deadline: string } | null;
+  reasons: { by: "code" | "verifier"; text: string }[];
+}
+export interface VerifyInfo { status?: "ok" | "failed" | "skipped"; model?: string | null; latency_ms?: number; attempts?: number; removed?: number; corrected?: number }
+export interface AICall { id: string; meeting_id: string | null; purpose: string; mode: string; model: string | null; latency_ms: number | null; ok: boolean; verdict: string | null; created_at: string }
 export interface Brief { id: string; text: string; owner: string | null; status: Status; overdue: boolean; deadline_date: string | null }
 export interface Conflict {
   id: string; meeting_id: string; previous_meeting_id: string | null; source: "in_meeting" | "cross_meeting" | "disagreement";
@@ -23,7 +33,11 @@ export interface Conflict {
   explanation: string | null; status: "open" | "confirmed_current" | "reverted" | "follow_up"; resolved_by: string | null; created_at: string;
 }
 export interface Notification { id: string; kind: string; text: string; link: string | null; read: number; created_at: string }
-export interface Meeting { id: string; topic: string; title: string | null; meeting_date: string; model: string; attempts: number; latency_ms: number; rejected: { kind: string; text: string; reason: string }[] }
+export interface Meeting {
+  id: string; topic: string; title: string | null; meeting_date: string; model: string; attempts: number; latency_ms: number;
+  rejected: { kind: string; text: string; reason: string; by?: "code" | "verifier" }[];
+  replay: ReplayRow[]; verify: VerifyInfo; redactions: Record<string, number>;
+}
 export interface Email { id: string; trigger: string; to_email: string; delivered_to: string | null; subject: string; status: string; error: string | null; created_at: string }
 export interface AIStatus { mode: "live" | "replay" | "test"; model: string; reason?: string; last_error?: string | null }
 
@@ -38,7 +52,7 @@ export interface ManagerState extends BaseState {
   graph: { nodes: Item[]; edges: { source: string; target: string; blocked: boolean }[] };
   actions: Item[]; decisions: Item[]; risks: Item[]; needs_review: Item[]; conflicts: Conflict[];
   teams: { team: string; color: Color; label: string; tasks: number }[];
-  meetings: Meeting[]; emails: Email[];
+  meetings: Meeting[]; emails: Email[]; ai_calls: AICall[];
 }
 export interface EmployeeState extends BaseState { tasks: Item[] }
 

@@ -2,7 +2,8 @@
 
 Flow: one call; if the reply is not valid JSON for the schema, or a quote is not in the
 notes, one corrective call (spec: retry once). After that, items whose quote still cannot
-be found are rejected (shown to the manager, never silently kept).
+be found are rejected (shown to the manager, never silently kept). Then pass 2, the
+Verifier (verifier.py), judges what is left. Every change is kept for the self-check replay.
 
 Honesty backstops in code, because a prompt alone does not stop an 8B model guessing:
 - an owner must be named in the item's own evidence sentence, else UNKNOWN;
@@ -20,7 +21,7 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
-from . import dates
+from . import dates, verifier
 from .evidence import locate, sentence_around, word_in
 from .prompts import EXTRACTION_TOOL, extraction_messages, repair_messages
 from .qualcomm import QualcommError
@@ -56,6 +57,10 @@ class CheckedItem:
     missing_info: list[str]
     checks: list[str] = field(default_factory=list)
     status: str = "not_started"
+    slot: int = -1  # position in the pass-1 reply, for the replay
+    raw_owner: str = UNKNOWN
+    raw_deadline: str = UNKNOWN
+    verification: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -80,6 +85,8 @@ class ExtractOutcome:
     attempts: int
     latency_ms: int
     model: str
+    verify: dict = field(default_factory=dict)
+    replay: list[dict] = field(default_factory=list)
 
 
 def _loads_lenient(body: str):
@@ -230,17 +237,19 @@ def _deadline_check(deadline: str, sentence: str) -> tuple[str, str | None]:
     return UNKNOWN, f"Deadline '{deadline}' is not in the source sentence, so it was set to UNKNOWN."
 
 
-def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[CheckedItem], list[CheckedContradiction], list[dict]]:
+def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[CheckedItem], list[CheckedContradiction], list[dict], list[dict]]:
     items: list[CheckedItem] = []
     rejected: list[dict] = []
     rows = [("decision", d.decision, d, None) for d in ext.decisions] + \
            [("action", a.task, a, a) for a in ext.actions] + \
            [("risk", r.risk, r, None) for r in ext.risks]
+    pass1 = [{"slot": n, "kind": kind, "text": text, "owner": it.owner, "deadline": it.deadline, "evidence": it.evidence_quote}
+             for n, (kind, text, it, _) in enumerate(rows)]
     counters = {"decision": 0, "risk": 0}
-    for kind, text, it, act in rows:
+    for slot, (kind, text, it, act) in enumerate(rows):
         span = locate(it.evidence_quote, notes)
         if span is None:
-            rejected.append({"kind": kind, "text": text, "reason": "Evidence sentence not found in the notes."})
+            rejected.append({"kind": kind, "text": text, "reason": "Evidence sentence not found in the notes.", "by": "code", "slot": slot})
             continue
         s, e = span
         ss, se = sentence_around(notes, s, e)
@@ -289,15 +298,9 @@ def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[C
             dependencies=deps, severity=getattr(it, "severity", None) if kind == "risk" else None,
             evidence_quote=notes[s:e], ev_start=ss, ev_end=se, confidence=it.confidence,
             missing_info=missing, checks=checks, status=status,
+            slot=slot, raw_owner=it.owner, raw_deadline=it.deadline,
         ))
-
-    # Dependencies must point at real actions of this meeting; no self-links.
-    action_refs = {i.ref for i in items if i.kind == "action"}
-    for i in items:
-        bad = [d for d in i.dependencies if d not in action_refs or d == i.ref]
-        if bad:
-            i.checks.append(f"Dropped unknown dependency {', '.join(bad)}.")
-        i.dependencies = [d for d in dict.fromkeys(i.dependencies) if d in action_refs and d != i.ref]
+    _prune_dependencies(items)
 
     contradictions: list[CheckedContradiction] = []
     for c in ext.contradictions:
@@ -308,11 +311,44 @@ def _check(ext: AIExtraction, notes: str, meeting_date: dt.date) -> tuple[list[C
             contradictions.append(CheckedContradiction(c.topic, c.current, c.previous, notes[cur[0]:cur[1]],
                                                        notes[prev[0]:prev[1]], c.kind))
         else:
-            rejected.append({"kind": "contradiction", "text": c.topic, "reason": "Quoted sentences not found in the notes."})
-    return items, contradictions, rejected
+            rejected.append({"kind": "contradiction", "text": c.topic, "reason": "Quoted sentences not found in the notes.", "by": "code"})
+    return items, contradictions, rejected, pass1
 
 
-def run(ai, notes: str, meeting_date: dt.date, mode: str = "json") -> ExtractOutcome:
+def _prune_dependencies(items: list[CheckedItem]) -> None:
+    """Dependencies must point at real actions of this meeting; no self-links."""
+    action_refs = {i.ref for i in items if i.kind == "action"}
+    for i in items:
+        bad = [d for d in i.dependencies if d not in action_refs or d == i.ref]
+        if bad:
+            i.checks.append(f"Dropped unknown dependency {', '.join(bad)}.")
+        i.dependencies = [d for d in dict.fromkeys(i.dependencies) if d in action_refs and d != i.ref]
+
+
+def _replay(pass1: list[dict], items: list[CheckedItem], rejected: list[dict]) -> list[dict]:
+    """Pass 1 beside the final result: kept, corrected or removed, and who decided (code or Verifier)."""
+    by_slot = {i.slot: i for i in items}
+    gone = {r["slot"]: r for r in rejected if "slot" in r}
+    out = []
+    for p in pass1:
+        row = {"kind": p["kind"], "text": p["text"], "owner": p["owner"], "deadline": p["deadline"], "evidence": p["evidence"]}
+        it = by_slot.get(p["slot"])
+        if it is not None:
+            reasons = [{"by": "verifier" if c.startswith("Verifier:") else "code", "text": c.removeprefix("Verifier: ")}
+                       for c in it.checks]
+            owner_cut = p["owner"] != UNKNOWN and it.owner is None
+            deadline_cut = p["deadline"] != UNKNOWN and it.deadline_raw == UNKNOWN
+            row.update(outcome="corrected" if owner_cut or deadline_cut else "kept",
+                       final={"owner": it.owner or UNKNOWN, "deadline": it.deadline_raw}, reasons=reasons)
+        else:
+            r = gone.get(p["slot"], {"by": "code", "reason": "Removed."})
+            row.update(outcome="removed", final=None, reasons=[{"by": r["by"], "text": r["reason"]}])
+        out.append(row)
+    return out
+
+
+
+def run(ai, notes: str, meeting_date: dt.date, mode: str = "json", verify: bool = True) -> ExtractOutcome:
     base = extraction_messages(notes, meeting_date.isoformat(), mode)
     tool = EXTRACTION_TOOL if mode == "tool" else None
     latency = 0
@@ -339,6 +375,7 @@ def run(ai, notes: str, meeting_date: dt.date, mode: str = "json") -> ExtractOut
         ext, errors = _validate(r.text, r.tool_arguments if mode == "tool" else None, notes)
         if ext is not None:
             best = ext
+        verifier.annotate(ai, "valid" if not errors else f"{len(errors)} problem{'s' if len(errors) != 1 else ''}")
         if not errors:
             break
         last_errors = errors
@@ -348,6 +385,18 @@ def run(ai, notes: str, meeting_date: dt.date, mode: str = "json") -> ExtractOut
     if best is None:
         raise ExtractionFailed("INVALID_AI_RESPONSE", "The AI reply could not be used after one corrective retry. Nothing was saved.",
                                True, last_errors)
-    items, contradictions, rejected = _check(best, notes, meeting_date)
+    items, contradictions, rejected, pass1 = _check(best, notes, meeting_date)
+    if verify:
+        v = verifier.verify(ai, notes, items, meeting_date)
+    else:
+        v = verifier.VerifyOutcome(status="skipped")
+        verifier.mark_unverified(items, "The Verifier is turned off.")
+    removed = {id(i) for i, _ in v.removed}
+    for i, reason in v.removed:
+        rejected.append({"kind": i.kind, "text": i.text, "reason": f"Verifier: {reason}", "by": "verifier", "slot": i.slot})
+    items = [i for i in items if id(i) not in removed]
+    if removed:
+        _prune_dependencies(items)
     return ExtractOutcome(topic=best.meeting_topic, items=items, contradictions=contradictions, rejected=rejected,
-                          attempts=attempts, latency_ms=latency, model=model)
+                          attempts=attempts, latency_ms=latency, model=model, verify=v.summary(),
+                          replay=_replay(pass1, items, rejected))

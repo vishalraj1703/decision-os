@@ -126,6 +126,31 @@ class AIExtraction(AIModel):
     contradictions: list[AIContradiction] = Field(default_factory=list, max_length=20)
 
 
+class AIVerdict(AIModel):
+    """One Verifier judgement. Anything not clearly false counts as true: the Verifier may
+    only remove or downgrade claims, so a missing field must never remove one."""
+
+    id: str = Field(min_length=1, max_length=20)
+    supported: bool = True
+    owner_stated: bool = True
+    deadline_stated: bool = True
+    reason: str = Field(default="", max_length=300)
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def norm_id(cls, v):
+        return str(v).strip().lower()
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def norm_reason(cls, v):
+        return "" if v is None else str(v).strip()[:300]
+
+
+class AIVerification(AIModel):
+    verdicts: list[AIVerdict] = Field(default_factory=list, max_length=100)
+
+
 class AIConflictCheck(AIModel):
     """Reply of the cross-meeting comparison call."""
 

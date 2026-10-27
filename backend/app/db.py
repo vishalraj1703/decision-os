@@ -15,7 +15,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS meetings (
     id TEXT PRIMARY KEY, topic TEXT NOT NULL, title TEXT, meeting_date TEXT NOT NULL, notes TEXT NOT NULL,
-    created_by TEXT, model TEXT, attempts INTEGER, latency_ms INTEGER, rejected_json TEXT, created_at TEXT NOT NULL
+    created_by TEXT, model TEXT, attempts INTEGER, latency_ms INTEGER, rejected_json TEXT, created_at TEXT NOT NULL,
+    replay_json TEXT, verify_json TEXT, redactions_json TEXT
 );
 CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY, meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS items (
     missing_info TEXT NOT NULL DEFAULT '[]', checks TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'not_started', blocked_reason TEXT,
     review_state TEXT NOT NULL DEFAULT 'ok', overdue INTEGER NOT NULL DEFAULT 0, at_risk INTEGER NOT NULL DEFAULT 0,
-    embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, verification TEXT
 );
 CREATE TABLE IF NOT EXISTS dependencies (
     item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
@@ -48,7 +49,17 @@ CREATE TABLE IF NOT EXISTS emails (
     id TEXT PRIMARY KEY, trigger TEXT NOT NULL, item_id TEXT, to_email TEXT NOT NULL, delivered_to TEXT,
     subject TEXT NOT NULL, status TEXT NOT NULL, provider_id TEXT, error TEXT, dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ai_calls (
+    id TEXT PRIMARY KEY, meeting_id TEXT, purpose TEXT NOT NULL, mode TEXT, model TEXT, latency_ms INTEGER,
+    ok INTEGER NOT NULL, verdict TEXT, prompt_tokens INTEGER, completion_tokens INTEGER, created_at TEXT NOT NULL
+);
 """
+
+# Columns added after the first deployment; older databases get them on start-up.
+MIGRATIONS = [
+    ("meetings", "replay_json", "TEXT"), ("meetings", "verify_json", "TEXT"), ("meetings", "redactions_json", "TEXT"),
+    ("items", "verification", "TEXT"),
+]
 
 
 def now() -> dt.datetime:
@@ -70,6 +81,9 @@ class DB:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with self.tx() as c:
             c.executescript(SCHEMA)
+            for table, col, kind in MIGRATIONS:
+                if col not in {r[1] for r in c.execute(f"PRAGMA table_info({table})")}:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
             c.execute("INSERT OR IGNORE INTO meta VALUES ('version', '1')")
 
     @contextmanager
@@ -120,6 +134,7 @@ class DB:
             d = dict(r)
             d["missing_info"] = json.loads(d["missing_info"] or "[]")
             d["checks"] = json.loads(d["checks"] or "[]")
+            d["verification"] = json.loads(d["verification"]) if d.get("verification") else None
             d["embedding"] = None if d["embedding"] is None else "stored"
             d["overdue"] = bool(d["overdue"])
             d["at_risk"] = bool(d["at_risk"])
@@ -152,23 +167,14 @@ class DB:
 
     def meetings(self) -> list[dict]:
         with self.tx() as c:
-            rows = c.execute("SELECT id, topic, title, meeting_date, created_at, model, attempts, latency_ms, rejected_json "
-                             "FROM meetings ORDER BY meeting_date, created_at").fetchall()
-        out = []
-        for r in rows:
-            d = dict(r)
-            d["rejected"] = json.loads(d.pop("rejected_json") or "[]")
-            out.append(d)
-        return out
+            rows = c.execute("SELECT id, topic, title, meeting_date, created_at, model, attempts, latency_ms, rejected_json, "
+                             "replay_json, verify_json, redactions_json FROM meetings ORDER BY meeting_date, created_at").fetchall()
+        return [_meeting_row(r) for r in rows]
 
     def meeting(self, meeting_id: str) -> dict | None:
         with self.tx() as c:
             r = c.execute("SELECT * FROM meetings WHERE id=?", (meeting_id,)).fetchone()
-        if r is None:
-            return None
-        d = dict(r)
-        d["rejected"] = json.loads(d.pop("rejected_json") or "[]")
-        return d
+        return None if r is None else _meeting_row(r)
 
     def contradictions(self) -> list[dict]:
         with self.tx() as c:
@@ -183,11 +189,32 @@ class DB:
                                  (user_id, limit))
             return [dict(r) for r in rows.fetchall()]
 
+    def ai_calls(self, limit: int = 20) -> list[dict]:
+        with self.tx() as c:
+            rows = c.execute("SELECT * FROM ai_calls ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
+        return [{**dict(r), "ok": bool(r["ok"])} for r in rows]
+
     def emails(self, limit: int = 30) -> list[dict]:
         with self.tx() as c:
             return [dict(r) for r in c.execute("SELECT * FROM emails ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,)).fetchall()]
 
     # Writes
+    def log_ai_call(self, **f: Any) -> str:
+        """Audit log row. Holds no notes or replies, only what the call was and how it went."""
+        cid = new_id("aic")
+        with self.tx() as c:
+            c.execute(
+                "INSERT INTO ai_calls (id, meeting_id, purpose, mode, model, latency_ms, ok, verdict, prompt_tokens, completion_tokens, "
+                "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (cid, f.get("meeting_id"), f["purpose"], f.get("mode"), f.get("model"), f.get("latency_ms"), int(f["ok"]),
+                 f.get("verdict"), f.get("prompt_tokens"), f.get("completion_tokens"), now().isoformat()),
+            )
+        return cid
+
+    def annotate_ai_call(self, cid: str, verdict: str) -> None:
+        with self.tx() as c:
+            c.execute("UPDATE ai_calls SET verdict=? WHERE id=?", (verdict[:200], cid))
+
     def update_item(self, item_id: str, **fields: Any) -> None:
         if not fields:
             return
@@ -269,22 +296,25 @@ class DB:
         ts = now().isoformat()
         with self.tx(bump=True) as c:
             c.execute(
-                "INSERT INTO meetings (id, topic, title, meeting_date, notes, created_by, model, attempts, latency_ms, rejected_json, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO meetings (id, topic, title, meeting_date, notes, created_by, model, attempts, latency_ms, rejected_json, "
+                "replay_json, verify_json, redactions_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (meeting["id"], meeting["topic"], meeting.get("title"), meeting["meeting_date"], meeting["notes"],
                  meeting.get("created_by"), meeting.get("model"), meeting.get("attempts"), meeting.get("latency_ms"),
-                 json.dumps(meeting.get("rejected", [])), ts),
+                 json.dumps(meeting.get("rejected", [])), json.dumps(meeting.get("replay", [])),
+                 json.dumps(meeting.get("verify", {})), json.dumps(meeting.get("redactions", {})), ts),
             )
             for it in items:
                 c.execute(
                     "INSERT INTO items (id, meeting_id, kind, ref, text, owner, owner_user_id, team, deadline_raw, deadline_date, "
                     "deadline_status, deadline_note, severity, evidence_quote, ev_start, ev_end, confidence, missing_info, checks, "
-                    "status, review_state, embedding, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "status, review_state, embedding, verification, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (it["id"], meeting["id"], it["kind"], it["ref"], it["text"], it.get("owner"), it.get("owner_user_id"),
                      it.get("team"), it.get("deadline_raw"), it.get("deadline_date"), it.get("deadline_status"), it.get("deadline_note"),
                      it.get("severity"), it["evidence_quote"], it.get("ev_start"), it.get("ev_end"), it.get("confidence"),
                      json.dumps(it.get("missing_info", [])), json.dumps(it.get("checks", [])), it.get("status", "not_started"),
-                     it.get("review_state", "ok"), json.dumps(it["embedding"]) if it.get("embedding") else None, ts, ts),
+                     it.get("review_state", "ok"), json.dumps(it["embedding"]) if it.get("embedding") else None,
+                     json.dumps(it["verification"]) if it.get("verification") else None, ts, ts),
                 )
             for a, b in deps:
                 c.execute("INSERT OR IGNORE INTO dependencies VALUES (?,?)", (a, b))
@@ -297,3 +327,12 @@ class DB:
         with self.tx(bump=True) as c:
             for t in ("emails", "notifications", "contradictions", "dependencies", "items", "meetings"):
                 c.execute(f"DELETE FROM {t}")
+
+
+def _meeting_row(r: sqlite3.Row) -> dict:
+    d = dict(r)
+    d["rejected"] = json.loads(d.pop("rejected_json") or "[]")
+    d["replay"] = json.loads(d.pop("replay_json", None) or "[]")
+    d["verify"] = json.loads(d.pop("verify_json", None) or "{}")
+    d["redactions"] = json.loads(d.pop("redactions_json", None) or "{}")
+    return d

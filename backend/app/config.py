@@ -33,6 +33,8 @@ class Settings:
     structured_mode: str = field(default_factory=lambda: os.environ.get("QUALCOMM_STRUCTURED_MODE", "json").strip())
     call_timeout_s: float = field(default_factory=lambda: float(os.environ.get("QUALCOMM_TIMEOUT_S", "45")))
     max_tokens: int = field(default_factory=lambda: int(os.environ.get("QUALCOMM_MAX_TOKENS", "2500")))
+    # Pass 2: a second call that re-reads the notes and removes or downgrades unsupported claims.
+    verifier_enabled: bool = field(default_factory=lambda: _bool("VERIFIER_ENABLED", True))
 
     db_path: Path = field(default_factory=lambda: Path(os.environ.get("DECISIONOS_DB", str(ROOT / "data" / "decisionos.db"))))
     # Shared secret between the Next.js server and FastAPI. FastAPI only trusts identity headers carrying it.
