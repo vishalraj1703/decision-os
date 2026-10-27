@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError, fmtDate, Item, ManagerState, STATUS_LABEL, VerifyInfo } from "@/lib/api";
 import { statusLabel } from "./Flowchart";
 import Icon from "./Icon";
+import { ClarifyDrafts, ExportButtons } from "./Explain";
 import { TrustReceipt } from "./Trust";
 
 type Person = { name: string; email: string; team: string; role: string };
 
-export function Metrics({ stats, actions }: { stats: ManagerState["stats"]; actions: Item[] }) {
+export function Metrics({ stats, actions, children }: { stats: ManagerState["stats"]; actions: Item[]; children?: React.ReactNode }) {
   const blocked = actions.filter((a) => a.status === "blocked" || a.overdue);
   const atRisk = actions.filter((a) => a.at_risk).length;
   return (
@@ -28,6 +29,7 @@ export function Metrics({ stats, actions }: { stats: ManagerState["stats"]; acti
         <div className="v">{stats.unassigned_actions}</div>
         <div className="c">{stats.unassigned_actions ? "Owner or date not stated in the notes" : "Every task has an owner and a date"}</div>
       </div>
+      {children}
     </div>
   );
 }
@@ -79,6 +81,7 @@ export function ActionTable({ actions, onSource }: { actions: Item[]; onSource: 
         <h2>Action items</h2>
         <span className="sub num">{actions.length}</span>
         <div className="spacer" />
+        <ExportButtons />
         <div className="segmented" role="group" aria-label="Filter actions">
           {([["all", "All"], ["review", "Needs review"], ["risk", "At risk"], ["done", "Done"]] as [Filter, string][]).map(([f, l]) => (
             <button key={f} aria-pressed={filter === f} onClick={() => setFilter(f)}>{l}{f !== "all" && <span className="num" style={{ marginLeft: 5, color: "var(--faint)" }}>{count(f)}</span>}</button>
@@ -159,9 +162,10 @@ function ReviewItem({ item, people, onSource }: { item: Item; people: Person[]; 
       </div>
       <div className="missing">{item.missing_info.map((m) => <span key={m} className="tag tag-review">{MISSING[m] ?? m}</span>)}</div>
       <div className="small"><span className="quote">{item.evidence_quote}</span> <button className="link" onClick={() => onSource(item)}>View source</button></div>
-      {item.checks.filter((c) => c.includes("not named")).map((c) => (
+      {item.checks.filter((c) => c.includes("not named") || c.startsWith("Verifier:")).map((c) => (
         <div key={c} className="why"><Icon name="info" size={13} />{c}</div>
       ))}
+      <ClarifyDrafts item={item} people={people} />
       <div className="row">
         {needsOwner && (
           <>

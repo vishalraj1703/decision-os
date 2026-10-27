@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import datetime as dt
 import hmac
+import json
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .ai import build_ai
@@ -35,6 +36,16 @@ class ResolveIn(In):
 class StatusIn(In):
     status: str = Field(max_length=20)
     reason: str | None = Field(default=None, max_length=200)
+
+
+class SlackIn(In):
+    days: int | None = None
+
+
+class ClarifyIn(In):
+    flag: str = Field(max_length=40)
+    to: str = Field(max_length=120)  # roster id or email
+    question: str = Field(max_length=400)
 
 
 class ClockIn(In):
@@ -172,6 +183,29 @@ def create_app(s: Settings | None = None, db: DB | None = None, ai: object | Non
             {"label": "last week's meeting", "date": "2026-10-19", "notes": (fx / "demo_meeting_0.txt").read_text(encoding="utf-8").strip()},
             {"label": "this week's meeting", "date": "2026-10-26", "notes": (fx / "demo_meeting_1.txt").read_text(encoding="utf-8").strip()},
         ]
+
+    @app.get("/whatif/{item_id}")
+    def whatif(item_id: str, me: Person = Depends(user)):
+        return svc.whatif(me, item_id)
+
+    @app.patch("/items/{item_id}/slack")
+    def set_slack(item_id: str, body: SlackIn, me: Person = Depends(user)):
+        return svc.set_slack(me, item_id, body.days)
+
+    @app.post("/items/{item_id}/clarify")
+    def send_clarify(item_id: str, body: ClarifyIn, me: Person = Depends(user)):
+        return svc.send_clarify(me, item_id, body.flag, body.to, body.question)
+
+    @app.get("/export.csv")
+    def export_csv(me: Person = Depends(user)):
+        return Response(svc.export_csv(me), media_type="text/csv; charset=utf-8",
+                        headers={"content-disposition": 'attachment; filename="decision-os-actions.csv"'})
+
+    @app.get("/export/jira.json")
+    def export_jira(project: str = "DOS", me: Person = Depends(user)):
+        key = "".join(ch for ch in project.upper() if ch.isalnum())[:10] or "DOS"
+        return Response(json.dumps(svc.export_jira(me, key), indent=1, ensure_ascii=False), media_type="application/json",
+                        headers={"content-disposition": 'attachment; filename="decision-os-jira.json"'})
 
     @app.get("/meetings/{meeting_id}/source")
     def source(meeting_id: str, me: Person = Depends(user)):

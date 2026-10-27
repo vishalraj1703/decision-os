@@ -14,6 +14,8 @@ export interface Item {
   review_state: "ok" | "needs_review" | "follow_up" | "discarded" | "superseded";
   overdue: boolean; at_risk: boolean; depends_on: string[]; color: Color;
   verification: Verification | null;
+  slack?: { days: number; source: "auto" | "manual" | "none"; why: string };
+  clarify?: ClarifyDraft[]; clarify_sent?: { flag: string; to: string; at: string }[];
   meeting: { id: string; topic: string; date: string };
   blocked_by?: Brief[]; blocking?: Brief[];
 }
@@ -26,6 +28,14 @@ export interface ReplayRow {
 }
 export interface VerifyInfo { status?: "ok" | "failed" | "skipped"; model?: string | null; latency_ms?: number; attempts?: number; removed?: number; corrected?: number }
 export interface AICall { id: string; meeting_id: string | null; purpose: string; mode: string; model: string | null; latency_ms: number | null; ok: boolean; verdict: string | null; created_at: string }
+export interface ClarifyDraft { flag: string; question: string; why: string; to: { id: string; email: string; name: string; team: string }[] }
+export interface HealthPart { key: "O" | "D" | "V" | "A" | "C"; label: string; weight: number; value: number; points: number; max: number; detail: string }
+export interface Health { score: number; parts: HealthPart[]; lost: number; items: number }
+export interface WhatIfStep {
+  days: number; delays: Record<string, number>; absorbed: Record<string, number>; teams: string[];
+  teams_affected: number; unteamed: number; days_at_risk: number; sentence: string;
+}
+export interface WhatIf { origin: string; slack: Record<string, { days: number; source: string; why: string }>; steps: WhatIfStep[] }
 export interface Brief { id: string; text: string; owner: string | null; status: Status; overdue: boolean; deadline_date: string | null }
 export interface Conflict {
   id: string; meeting_id: string; previous_meeting_id: string | null; source: "in_meeting" | "cross_meeting" | "disagreement";
@@ -36,7 +46,7 @@ export interface Notification { id: string; kind: string; text: string; link: st
 export interface Meeting {
   id: string; topic: string; title: string | null; meeting_date: string; model: string; attempts: number; latency_ms: number;
   rejected: { kind: string; text: string; reason: string; by?: "code" | "verifier" }[];
-  replay: ReplayRow[]; verify: VerifyInfo; redactions: Record<string, number>;
+  replay: ReplayRow[]; verify: VerifyInfo; redactions: Record<string, number>; health?: Health;
 }
 export interface Email { id: string; trigger: string; to_email: string; delivered_to: string | null; subject: string; status: string; error: string | null; created_at: string }
 export interface AIStatus { mode: "live" | "replay" | "test"; model: string; reason?: string; last_error?: string | null }
@@ -52,7 +62,7 @@ export interface ManagerState extends BaseState {
   graph: { nodes: Item[]; edges: { source: string; target: string; blocked: boolean }[] };
   actions: Item[]; decisions: Item[]; risks: Item[]; needs_review: Item[]; conflicts: Conflict[];
   teams: { team: string; color: Color; label: string; tasks: number }[];
-  meetings: Meeting[]; emails: Email[]; ai_calls: AICall[];
+  meetings: Meeting[]; emails: Email[]; ai_calls: AICall[]; health: Health | null;
 }
 export interface EmployeeState extends BaseState { tasks: Item[] }
 

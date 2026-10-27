@@ -9,7 +9,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 
-from . import cascade, conflicts, dates, extract
+from . import cascade, clarify, conflicts, dates, export, extract, health, risk
 from .ai import AuditedAI
 from .config import Settings
 from .db import DB, new_id
@@ -214,6 +214,22 @@ class Service:
             team_rows.append({"team": t, "color": worst, "tasks": len(ts),
                               "label": {"red": "blocked", "orange": "attention", "grey": "waiting", "green": "healthy"}[worst]})
         notes = self.db.notifications(None, manager=True)
+        slacks = risk.slack(actions)
+        for a in actions:
+            a["slack"] = slacks[a["id"]]
+        contradictions = self.db.contradictions()
+        meeting_list = list(meetings.values())
+        for m in meeting_list:
+            m["health"] = health.score([i for i in items if i["meeting_id"] == m["id"]],
+                                       [c for c in contradictions if c["meeting_id"] == m["id"]])
+        needs_review = [i for i in live if i["review_state"] in ("needs_review", "follow_up")]
+        sent = self.db.clarifications()
+        names = {p.id: p.name for p in PEOPLE}
+        for i in needs_review:
+            same = [x for x in live if x["meeting_id"] == i["meeting_id"]]
+            i["clarify"] = clarify.drafts(i, same)
+            i["clarify_sent"] = [{"flag": q["flag"], "to": names.get(q["to_user_id"], q["to_user_id"]), "at": q["created_at"]}
+                                 for q in sent if q["item_id"] == i["id"]]
         return {
             **base,
             "stats": {
@@ -226,10 +242,11 @@ class Service:
             "actions": actions,
             "decisions": [i for i in live if i["kind"] == "decision"],
             "risks": [i for i in live if i["kind"] == "risk"],
-            "needs_review": [i for i in live if i["review_state"] in ("needs_review", "follow_up")],
-            "conflicts": self.db.contradictions(),
+            "needs_review": needs_review,
+            "conflicts": contradictions,
             "teams": team_rows,
-            "meetings": list(meetings.values()),
+            "meetings": meeting_list,
+            "health": meeting_list[-1]["health"] if meeting_list else None,
             "notifications": notes,
             "unread": sum(1 for n in notes if not n["read"]),
             "emails": self.db.emails(10),
@@ -453,6 +470,67 @@ class Service:
         if actions:
             return {"text": "No blockers. All handoffs are on track.", "severity": "grey", "source": "rule"}
         return {"text": "Paste meeting notes to build the decision graph.", "severity": "grey", "source": "rule"}
+
+    # Risk propagation (what-if)
+    def _live_actions(self) -> list[dict]:
+        return [a for a in self.db.items("WHERE kind='action'") if a["review_state"] != "discarded"]
+
+    def whatif(self, me: Person, item_id: str) -> dict:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Managers only.", 403)
+        actions = self._live_actions()
+        if not any(a["id"] == item_id for a in actions):
+            raise AppError("NOT_FOUND", "Task not found.", 404)
+        return risk.whatif(actions, item_id)
+
+    def set_slack(self, me: Person, item_id: str, days: int | None) -> dict:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Managers only.", 403)
+        it = self.db.item(item_id)
+        if it is None or it["kind"] != "action":
+            raise AppError("NOT_FOUND", "Task not found.", 404)
+        if days is not None and not 0 <= days <= 60:
+            raise AppError("INVALID", "Slack must be between 0 and 60 days.", 422)
+        self.db.update_item(item_id, slack_days=days)
+        return self.db.item(item_id) or {}
+
+    # Clarify Loop
+    def send_clarify(self, me: Person, item_id: str, flag: str, to_user_id: str, question: str) -> dict:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Only managers send questions.", 403)
+        it = self.db.item(item_id)
+        if it is None:
+            raise AppError("NOT_FOUND", "Item not found.", 404)
+        if flag not in it["missing_info"]:
+            raise AppError("INVALID", "That question is already answered.", 422)
+        key = (to_user_id or "").strip().lower()
+        to = next((p for p in PEOPLE if key in (p.id, p.email) and p.role == "employee"), None)
+        if to is None:
+            raise AppError("INVALID", "Pick someone from the team roster.", 422)
+        question = " ".join((question or "").split())[:400]
+        if not question:
+            raise AppError("INVALID", "Write the question first.", 422)
+        if any(q["item_id"] == item_id and q["flag"] == flag and q["to_user_id"] == to.id for q in self.db.clarifications()):
+            raise AppError("ALREADY_SENT", f"This question was already sent to {to.name}.", 409)
+        eid = self.mailer.clarify(it, flag, to, question, me.name)
+        self.db.add_clarification(item_id=item_id, flag=flag, to_user_id=to.id, question=question, sent_by=me.id, email_id=eid)
+        self.db.notify("user", "question", f"{me.name} asks: {question}", link="/me", user_id=to.id,
+                       dedupe_key=f"clarify:{item_id}:{flag}:{to.id}")
+        email = next((e for e in self.db.emails(30) if e["id"] == eid), None)
+        return {"ok": True, "to": to.name, "email_status": email["status"] if email else None}
+
+    # Export
+    def export_actions(self, me: Person) -> list[dict]:
+        if me.role != "manager":
+            raise AppError("FORBIDDEN", "Managers only.", 403)
+        st = self.state(me)
+        return st["actions"]
+
+    def export_csv(self, me: Person) -> str:
+        return export.to_csv(self.export_actions(me))
+
+    def export_jira(self, me: Person, project: str) -> dict:
+        return export.to_jira(self.export_actions(me), project)
 
     def meeting_source(self, meeting_id: str) -> dict:
         m = self.db.meeting(meeting_id)

@@ -1,4 +1,5 @@
-"""Real email notifications via Resend (spec 9.2): exactly three triggers.
+"""Real email notifications via Resend (spec 9.2): exactly three automatic triggers,
+plus the Clarify Loop question a manager chooses to send.
 
 1. Deadline within 24 hours, status not Done        -> employee
 2. Deadline passed, status not Done                  -> employee, manager in cc
@@ -105,6 +106,16 @@ class Mailer:
             "overdue", f"overdue:{task['id']}:{task['deadline_date']}", task["id"], owner, MANAGERS,
             f"Overdue: {task['text']}" + (" (blocking downstream work)" if blocks else ""),
             "Task overdue", lines, "Open the manager dashboard", f"{self.s.app_url}/manager#row-{task['id']}",
+        )
+
+    # Clarify Loop: sent by a manager, once per item, flag and person
+    def clarify(self, item: dict, flag: str, to: Person, question: str, sender: str) -> str | None:
+        return self._send(
+            "clarify", f"clarify:{item['id']}:{flag}:{to.id}", item["id"], to, [],
+            f"Question about: {item['text']}", "A question from your manager",
+            [f"Hi {to.name},", f"{sender} asks: {question}", f"From the notes: “{item['evidence_quote']}”",
+             "Reply to your manager with the answer."],
+            "Open Decision OS", f"{self.s.app_url}/me",
         )
 
     # Trigger 3

@@ -9,6 +9,7 @@ import Icon from "./Icon";
 import { ActionTable, Callout, Metrics, NeedsReview, NewMeeting, TeamStatus } from "./Panels";
 import { Bell, EnginePill, NavLink, SimPill, Sidebar, SourceSheet, UserMenu } from "./Shell";
 import { AICallLog, SelfCheck, SelfCheckSummary, TrustReceipt } from "./Trust";
+import { HealthSheet, HealthTile, Preview, WhatIfPanel } from "./Explain";
 
 type Person = { name: string; email: string; team: string; role: string };
 type Demo = { label: string; date: string; notes: string };
@@ -20,6 +21,8 @@ export default function ManagerDashboard() {
   const [source, setSource] = useState<Item | null>(null);
   const [adding, setAdding] = useState(false);
   const [check, setCheck] = useState<Meeting | null>(null);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [preview, setPreview] = useState<Preview>(null);
 
   useEffect(() => {
     fetch("/api/people").then((r) => r.json()).then(setPeople).catch(() => setPeople([]));
@@ -66,7 +69,9 @@ export default function ManagerDashboard() {
 
         <main className="content">
           {error && <div className="alert alert-error"><Icon name="alert" size={15} />{error}</div>}
-          <Metrics stats={s.stats} actions={s.actions} />
+          <Metrics stats={s.stats} actions={s.actions}>
+            <HealthTile health={s.health} meeting={s.meetings[s.meetings.length - 1]} onOpen={() => setHealthOpen(true)} />
+          </Metrics>
           <Callout c={s.callout} />
 
           <div className="grid-2">
@@ -78,7 +83,8 @@ export default function ManagerDashboard() {
                   <div className="spacer" />
                   <Legend />
                 </div>
-                <Flowchart graph={s.graph} onOpen={openSource} />
+                <Flowchart graph={s.graph} onOpen={openSource} preview={preview} />
+                <WhatIfPanel actions={s.actions} edges={s.graph.edges} version={s.version} onPreview={setPreview} />
               </div>
               <TeamStatus teams={s.teams} />
             </div>
@@ -148,6 +154,7 @@ export default function ManagerDashboard() {
         </main>
       </div>
 
+      {healthOpen && s.meetings.length > 0 && <HealthSheet meetings={s.meetings} initial={s.meetings[s.meetings.length - 1].id} onClose={() => setHealthOpen(false)} />}
       {check && <SelfCheck m={s.meetings.find((m) => m.id === check.id) ?? check} onClose={() => setCheck(null)} />}
       {adding && <NewMeeting demos={demos} model={s.ai.model} live={live} onClose={() => setAdding(false)} />}
       {source && (

@@ -128,7 +128,30 @@ p { margin: 0; }
 @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } .sidebar { display: none; } }
 
 /* ---------- Metrics ---------- */
-.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+@media (max-width: 900px) { .metrics { grid-template-columns: repeat(2, 1fr); } .metric:nth-child(2) { border-right: 0; } .metric:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+.metric-btn { font: inherit; text-align: left; background: transparent; border: 0; border-right: 1px solid var(--line); cursor: pointer; color: inherit; }
+.metric-btn:hover { background: var(--surface-2); }
+.metric-btn .link-like { color: var(--accent); }
+.metric.is-green .v, .hscore.is-green { color: var(--green); }
+.metric.is-amber .v, .hscore.is-amber { color: var(--amber); }
+.hscore.is-red { color: var(--red); }
+.hscore { font-family: var(--font-display); font-size: 40px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.hbar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--sunken); }
+.hbar span { display: block; height: 100%; }
+.hbar .lost { background: repeating-linear-gradient(45deg, var(--sunken), var(--sunken) 4px, #e4e0d8 4px, #e4e0d8 8px); }
+.formula { font-size: 12px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; overflow-x: auto; white-space: nowrap; }
+.swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.whatif { border-top: 1px solid var(--line); padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.whatif input[type="range"] { accent-color: var(--red); }
+.whatif-out { font-size: 13px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.whatif-out.is-red { background: var(--red-soft); border-color: var(--red-line); }
+.whatif-out.is-amber { background: var(--amber-soft); border-color: var(--amber-line); }
+.whatif-out .table { background: var(--surface); border-radius: 6px; }
+.node-whatif { transition: border-color .15s, box-shadow .15s; }
+.clarify { display: flex; flex-direction: column; gap: 8px; }
+.draft { border: 1px dashed var(--line-strong); border-radius: 8px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; background: var(--surface-2); }
+.draft .textarea { min-height: 0; font-size: 13px; }
 .metric { padding: 16px 18px; border-right: 1px solid var(--line); }
 .metric:last-child { border-right: 0; }
 .metric .k { font-size: 12px; color: var(--muted); font-weight: 550; display: flex; align-items: center; gap: 6px; }

@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS items (
     missing_info TEXT NOT NULL DEFAULT '[]', checks TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'not_started', blocked_reason TEXT,
     review_state TEXT NOT NULL DEFAULT 'ok', overdue INTEGER NOT NULL DEFAULT 0, at_risk INTEGER NOT NULL DEFAULT 0,
-    embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, verification TEXT
+    embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, verification TEXT, slack_days INTEGER
 );
 CREATE TABLE IF NOT EXISTS dependencies (
     item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS emails (
     id TEXT PRIMARY KEY, trigger TEXT NOT NULL, item_id TEXT, to_email TEXT NOT NULL, delivered_to TEXT,
     subject TEXT NOT NULL, status TEXT NOT NULL, provider_id TEXT, error TEXT, dedupe_key TEXT UNIQUE, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS clarifications (
+    id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE, flag TEXT NOT NULL,
+    to_user_id TEXT NOT NULL, question TEXT NOT NULL, sent_by TEXT, email_id TEXT, created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS ai_calls (
     id TEXT PRIMARY KEY, meeting_id TEXT, purpose TEXT NOT NULL, mode TEXT, model TEXT, latency_ms INTEGER,
     ok INTEGER NOT NULL, verdict TEXT, prompt_tokens INTEGER, completion_tokens INTEGER, created_at TEXT NOT NULL
@@ -58,7 +62,7 @@ CREATE TABLE IF NOT EXISTS ai_calls (
 # Columns added after the first deployment; older databases get them on start-up.
 MIGRATIONS = [
     ("meetings", "replay_json", "TEXT"), ("meetings", "verify_json", "TEXT"), ("meetings", "redactions_json", "TEXT"),
-    ("items", "verification", "TEXT"),
+    ("items", "verification", "TEXT"), ("items", "slack_days", "INTEGER"),
 ]
 
 
@@ -188,6 +192,19 @@ class DB:
                 rows = c.execute("SELECT * FROM notifications WHERE audience='user' AND user_id=? ORDER BY created_at DESC, rowid DESC LIMIT ?",
                                  (user_id, limit))
             return [dict(r) for r in rows.fetchall()]
+
+    def clarifications(self) -> list[dict]:
+        with self.tx() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM clarifications ORDER BY created_at").fetchall()]
+
+    def add_clarification(self, **f: Any) -> str:
+        cid = new_id("clq")
+        with self.tx(bump=True) as c:
+            c.execute("INSERT INTO clarifications (id, item_id, flag, to_user_id, question, sent_by, email_id, created_at) "
+                      "VALUES (?,?,?,?,?,?,?,?)",
+                      (cid, f["item_id"], f["flag"], f["to_user_id"], f["question"], f.get("sent_by"), f.get("email_id"),
+                       now().isoformat()))
+        return cid
 
     def ai_calls(self, limit: int = 20) -> list[dict]:
         with self.tx() as c:
@@ -325,7 +342,7 @@ class DB:
 
     def reset(self) -> None:
         with self.tx(bump=True) as c:
-            for t in ("emails", "notifications", "contradictions", "dependencies", "items", "meetings"):
+            for t in ("emails", "notifications", "clarifications", "contradictions", "dependencies", "items", "meetings"):
                 c.execute(f"DELETE FROM {t}")
 
 
