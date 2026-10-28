@@ -9,3 +9,4 @@ node_modules/
 .pytest_cache/
 docs/qualcomm-check.json
 deploy-secrets.txt
+vercel-paste.txt

@@ -90,8 +90,8 @@ export default function Flowchart({ graph, onOpen, preview = null }: { graph: Ma
       const hot = preview ? Boolean(preview.delays[e.target]) : e.blocked;
       return {
         id: `${e.source}->${e.target}`, source: e.source, target: e.target, animated: hot, type: "smoothstep",
-        style: { stroke: hot ? "#c4372c" : "#b9b4aa", strokeWidth: hot ? 2 : 1.4 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: hot ? "#c4372c" : "#b9b4aa", width: 16, height: 16 },
+        style: { stroke: hot ? "#b91c1c" : "#94a3b8", strokeWidth: hot ? 2 : 1.4 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: hot ? "#b91c1c" : "#94a3b8", width: 16, height: 16 },
       };
     });
     return { nodes, edges, hidden };
@@ -103,9 +103,9 @@ export default function Flowchart({ graph, onOpen, preview = null }: { graph: Ma
   return (
     <>
       <div className="flow">
-        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.08, maxZoom: 1.05 }}
+        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.08, maxZoom: 1.05, minZoom: 0.7 }} minZoom={0.5}
                    nodesDraggable={false} nodesConnectable={false} zoomOnScroll={false} preventScrolling={false} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}>
-          <Background variant={BackgroundVariant.Dots} color="#ddd9d1" gap={18} size={1} />
+          <Background variant={BackgroundVariant.Dots} color="#d5dde6" gap={18} size={1} />
           <Controls showInteractive={false} position="bottom-right" />
         </ReactFlow>
       </div>

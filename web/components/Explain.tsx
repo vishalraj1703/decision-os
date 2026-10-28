@@ -6,7 +6,7 @@ import Icon from "./Icon";
 
 type Person = { name: string; email: string; team: string; role: string };
 
-const PART_COLOR: Record<string, string> = { O: "#2443b8", D: "#5b74d6", V: "#1d7f54", A: "#b86e00", C: "#8b8f97" };
+const PART_COLOR: Record<string, string> = { O: "#007cc3", D: "#4fa3d9", V: "#15803d", A: "#b45309", C: "#64748b" };
 
 function healthTone(score: number) {
   return score >= 80 ? "is-green" : score >= 60 ? "is-amber" : "is-red";

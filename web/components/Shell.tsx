@@ -73,9 +73,23 @@ export function UserMenu({ me }: { me: { name: string; role: string; team: strin
   );
 }
 
+// Highlights the section link matching the URL hash (presentation only; navigation is plain anchors).
+function useHash() {
+  const [hash, setHash] = useState("");
+  useEffect(() => {
+    const read = () => setHash(window.location.hash);
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  return hash;
+}
+
 export function NavLink({ href, icon, label, count, alert }: { href: string; icon: string; label: string; count?: number; alert?: boolean }) {
+  const hash = useHash();
+  const active = hash ? hash === href : href === "#top";
   return (
-    <a href={href}>
+    <a href={href} className={active ? "is-active" : undefined} aria-current={active ? "location" : undefined}>
       <Icon name={icon} size={15} />
       {label}
       {count !== undefined && count > 0 && <span className={`count${alert ? " is-hot" : ""}`}>{count}</span>}

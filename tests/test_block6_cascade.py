@@ -8,6 +8,8 @@ from conftest import MANAGER, as_user, extract
 
 
 def seed(c):
+    # Pin the clock before any deadline, so the test does not depend on the real date.
+    c.post("/admin/clock", json={"date": "2026-10-20"}, headers=MANAGER)
     extract(c, "demo_meeting_0", "2026-10-19")  # Ravi (Oct 27) -> Asha (Oct 28) -> Meera (Oct 29)
 
 

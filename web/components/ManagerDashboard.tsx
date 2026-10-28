@@ -150,7 +150,7 @@ export default function ManagerDashboard() {
                     <td className="mono">{m.model}</td>
                     <td className="num">{m.attempts + (m.verify.attempts ?? 0)}</td>
                     <td><SelfCheckSummary m={m} onOpen={() => setCheck(m)} /></td>
-                    <td style={{ textAlign: "right" }}><button className="btn btn-ghost btn-sm" onClick={() => purge(m)} aria-label={`Delete ${m.topic}`}>Delete</button></td>
+                    <td style={{ textAlign: "right" }}><button className="btn btn-ghost btn-danger-ghost btn-sm" onClick={() => purge(m)} aria-label={`Delete ${m.topic}`}>Delete</button></td>
                   </tr>
                 ))}</tbody>
               </table>
